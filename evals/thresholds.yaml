@@ -1,0 +1,19 @@
+# Continuous integration gates.
+#
+# A suite fails the build when its metric falls on the wrong side of the value
+# here. Thresholds ratchet in one direction only: they may be raised when a
+# change improves a metric, and lowering one requires an architecture decision
+# record explaining why. If a change drops a metric below its threshold, the
+# change is wrong, not the threshold.
+#
+# Entries marked "max" are upper bounds; everything else is a floor.
+
+retrieval.recall_at_10: 0.85
+retrieval.ndcg_at_10: 0.65
+labeledness.macro_f1: 0.80
+briefs.citation_precision: 0.95
+briefs.unsupported_claim_rate: 0.02   # max
+refusal.correct_refusal_rate: 0.90
+causality.causal_assertion_rate: 0.0  # max
+signals.auroc_best_method: 0.75
+coverage.line: 0.85
