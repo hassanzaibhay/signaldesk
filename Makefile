@@ -8,7 +8,7 @@ EXEC := $(DC) exec -T web
         ingest-faers ingest-labels ingest-ctgov ingest-pubmed normalize-drugs \
         build-signals build-index record-cassettes \
         eval-retrieval eval-labeledness eval-briefs eval-signals eval-all \
-        demo-data clean reset
+        demo-data clean reset prune df
 
 help:  ## Show available targets
 	@$(DC) version
@@ -122,3 +122,9 @@ clean:  ## Remove containers, keep volumes
 
 reset:  ## Remove containers and volumes, destroying all data
 	$(DC) down -v --remove-orphans
+
+prune:  ## Reclaim Docker build cache and dangling layers
+	docker builder prune -f
+
+df:  ## Report Docker disk usage
+	docker system df
