@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.7
+FROM python:3.12-slim-bookworm AS base
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    HF_HOME=/data/models \
+    XDG_CACHE_HOME=/data/cache
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential curl git libpq5 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:0.4 /uv /usr/local/bin/uv
+WORKDIR /app
+
+FROM base AS deps
+COPY pyproject.toml uv.lock* README.md ./
+# The package is installed from source; hatchling needs the tree to exist at this
+# stage. The real source arrives with COPY . /app in the runtime stage.
+RUN mkdir -p src/signaldesk && touch src/signaldesk/__init__.py
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system torch --index-url https://download.pytorch.org/whl/cpu
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system ".[ml]"
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system --group dev
+
+FROM deps AS runtime
+COPY . /app
+RUN uv pip install --system --no-deps -e . \
+    && groupadd -r app && useradd -r -g app -d /app app \
+    && mkdir -p /data && chown -R app:app /app /data
+USER app
+EXPOSE 8000
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

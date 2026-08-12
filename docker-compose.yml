@@ -1,0 +1,87 @@
+name: signaldesk
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: signaldesk:local
+  env_file: [.env]
+  volumes:
+    - ./src:/app/src
+    - ./tests:/app/tests
+    - ./evals:/app/evals
+    - ./docs:/app/docs
+    - ./scripts:/app/scripts
+    - ./manage.py:/app/manage.py
+    - signaldesk_data:/data
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: signaldesk
+      POSTGRES_PASSWORD: signaldesk
+      POSTGRES_DB: signaldesk
+    volumes:
+      - signaldesk_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    ports: ["5432:5432"]
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signaldesk -d signaldesk"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [signaldesk_redis:/data]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    <<: *app
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz/')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  worker:
+    <<: *app
+    command: ["celery", "-A", "signaldesk.core.celery_app", "worker", "-l", "info", "-Q", "default,ingest,rag"]
+
+  beat:
+    <<: *app
+    command: ["celery", "-A", "signaldesk.core.celery_app", "beat", "-l", "info"]
+
+  assets:
+    image: node:22-alpine
+    profiles: ["dev"]
+    working_dir: /app
+    volumes: ["./:/app"]
+    command: ["sh", "-c", "npm install && npm run watch"]
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local-llm"]
+    volumes: [signaldesk_ollama:/root/.ollama]
+    ports: ["11434:11434"]
+
+volumes:
+  signaldesk_pgdata:
+  signaldesk_redis:
+  signaldesk_data:
+  signaldesk_ollama:
