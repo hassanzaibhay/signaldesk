@@ -1,0 +1,16 @@
+{
+  "name": "signaldesk-assets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stylesheet build and vendored front-end libraries for SignalDesk",
+  "scripts": {
+    "build": "tailwindcss -i src/signaldesk/web/static/css/input.css -o src/signaldesk/web/static/css/app.css --minify",
+    "watch": "tailwindcss -i src/signaldesk/web/static/css/input.css -o src/signaldesk/web/static/css/app.css --watch",
+    "vendor": "node scripts/vendor_assets.js"
+  },
+  "devDependencies": {
+    "alpinejs": "3.14.1",
+    "htmx.org": "2.0.2",
+    "tailwindcss": "3.4.10"
+  }
+}
