@@ -1,0 +1,180 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  DJANGO_SECRET_KEY: ci-only-not-a-secret
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: uv pip install --system -e . --group dev
+      - name: Check formatting
+        run: ruff format --check src tests scripts
+      - name: Lint
+        run: ruff check src tests scripts
+
+  type:
+    name: type
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: uv pip install --system -e . --group dev
+      - name: Type-check
+        run: mypy
+
+  unit:
+    name: unit (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: uv pip install --system -e . --group dev
+      - name: Run unit tests with coverage
+        run: pytest -m unit --cov --cov-report=term-missing
+
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: signaldesk
+          POSTGRES_PASSWORD: signaldesk
+          POSTGRES_DB: signaldesk
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U signaldesk -d signaldesk"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: signaldesk
+      POSTGRES_USER: signaldesk
+      POSTGRES_PASSWORD: signaldesk
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: uv pip install --system -e . --group dev
+      - name: Create the database extensions
+        run: psql "postgresql://signaldesk:signaldesk@localhost:5432/signaldesk" -f docker/postgres-init.sql
+      - name: Run integration tests
+        run: pytest -m integration
+
+  portability:
+    name: portability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Encoding and commit-metadata checks
+        run: python scripts/check_hygiene.py
+      - name: No CRLF line endings in tracked text files
+        run: |
+          if git ls-files --eol | grep -E 'i/crlf|i/mixed|w/crlf|w/mixed'; then
+            echo "tracked files must use LF endings"
+            exit 1
+          fi
+      - name: No symlinks
+        run: |
+          if git ls-files -s | awk '$1 == "120000" { print; found = 1 } END { exit !found }'; then
+            echo "symlinks do not survive a Windows checkout"
+            exit 1
+          fi
+      - name: No platform-specific path handling under src
+        run: |
+          if git grep -n 'os\.path\.join' -- src; then
+            echo "use pathlib.Path instead of os.path.join"
+            exit 1
+          fi
+          if git grep -nE '"[A-Za-z0-9_. -]*\\\\[A-Za-z0-9_. -]+"' -- 'src/**/*.py'; then
+            echo "backslash path literals are not portable"
+            exit 1
+          fi
+
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Create the environment file
+        run: cp .env.example .env
+      - name: Build the image
+        run: docker compose build
+      - name: Start the stack
+        run: docker compose up -d postgres redis web
+      - name: Apply migrations
+        run: docker compose exec -T web python manage.py migrate
+      - name: Check the health endpoint
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/healthz/; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs web
+          exit 1
+      - name: Report the image size
+        if: always()
+        run: docker image ls signaldesk:local
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v
