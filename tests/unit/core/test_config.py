@@ -12,7 +12,9 @@ from signaldesk.core.config import Settings, get_settings
 pytestmark = pytest.mark.unit
 
 
-def test_defaults_match_the_container_layout(settings: Settings) -> None:
+@pytest.mark.usefixtures("clean_env")
+def test_defaults_match_the_container_layout() -> None:
+    settings = Settings(_env_file=None, django_secret_key="k")
     assert settings.postgres_host == "postgres"
     assert settings.postgres_port == 5432
     assert settings.faers_start_quarter == "2012Q4"

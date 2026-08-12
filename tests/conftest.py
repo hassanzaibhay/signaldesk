@@ -17,6 +17,17 @@ SettingsFactory = Callable[..., Settings]
 
 
 @pytest.fixture
+def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remove every settings key from the environment.
+
+    A test that asserts a default has to run without one, and the container
+    exports most of these from its .env file.
+    """
+    for name in Settings.model_fields:
+        monkeypatch.delenv(name.upper(), raising=False)
+
+
+@pytest.fixture
 def make_settings(tmp_path: Path) -> SettingsFactory:
     """Build a Settings object isolated from the environment and the filesystem."""
 
