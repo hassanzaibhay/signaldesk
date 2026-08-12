@@ -137,6 +137,13 @@ jobs:
             echo "symlinks do not survive a Windows checkout"
             exit 1
           fi
+      - name: Shell scripts are executable
+        run: |
+          if git ls-files -s -- '*.sh' | awk '$1 != "100755" { print; found = 1 } END { exit !found }'; then
+            echo "a script without the executable bit runs on Windows and fails on Linux"
+            echo "fix with: git update-index --chmod=+x <path>"
+            exit 1
+          fi
       - name: No platform-specific path handling under src
         run: |
           if git grep -n 'os\.path\.join' -- src; then
