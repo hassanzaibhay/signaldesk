@@ -45,6 +45,25 @@ ml = [
   "torch~=2.4",
   "transformers~=4.45",
 ]
+# Mirrors the dev dependency group below. Both exist because local work uses
+# "uv sync", which reads dependency groups, while the image installs an extra:
+# "uv pip install --group" is not available in the uv release the image pins.
+# Keep the two lists identical.
+dev = [
+  "ruff~=0.6",
+  "mypy~=1.11",
+  "pytest~=8.3",
+  "pytest-django~=4.9",
+  "pytest-cov~=5.0",
+  "pytest-xdist~=3.6",
+  "hypothesis~=6.112",
+  "respx~=0.21",
+  "freezegun~=1.5",
+  "factory-boy~=3.3",
+  "django-stubs[compatible-mypy]~=5.1",
+  "djangorestframework-stubs~=3.15",
+  "types-pyyaml",
+]
 
 [project.scripts]
 signaldesk = "signaldesk.cli:app"
