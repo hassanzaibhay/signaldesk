@@ -160,9 +160,13 @@ estimated directly from a hand audit rather than derived.
 
 The procedure, in the order it must happen:
 
-1. Draw a stratified random sample of flagged pairs, fixed seed recorded: pairs
-   from the sparse subset and pairs from the richer subset, sampled separately
-   because their error rates are expected to differ by a wide margin.
+1. Draw a stratified random sample of flagged pairs: pairs from the sparse
+   subset and pairs from the richer subset, sampled separately because their
+   error rates are expected to differ by a wide margin. Three things are
+   recorded as the sample's provenance, not the seed alone: the seed, the
+   stratum definition in force, and the commit the population was drawn at. A
+   seed identifies a draw only if what was drawn from is also pinned, and the
+   stratum definition changes with normalization.
 2. Emit one row per pair carrying everything a person needs to judge it side by
    side: both case identifiers, receipt and event dates with their precision
    flags, sex, age, weight, country and which column supplied it, the full drug
@@ -182,13 +186,37 @@ The two stages have different denominators, and sharing one overstates the
 result. Version supersession is checked on every case. Probabilistic matching is
 only attempted on cases with a complete blocking key, a strict subset.
 
-| Rate | Measured | Population |
-|---|---|---|
-| Stage 1 supersession | 2,851,499 / 20,535,213 = **13.89%** | every case |
-| Stage 2 match | 1,653,845 / 11,549,158 = **14.32%** | cases with a complete blocking key |
-| Overall duplicate | 4,505,344 / 20,535,213 = **21.94%** | every case |
+| Rate | Measured | Population | Status |
+|---|---|---|---|
+| Stage 1 supersession | 2,851,499 / 20,535,213 = **13.89%** | every case | Settled |
+| Stage 2 match | 1,653,845 / 11,549,158 = **14.32%** | cases with a complete blocking key | Provisional |
+| Overall duplicate | 4,505,344 / 20,535,213 = **21.94%** | every case | Provisional |
 
-That leaves **16,029,869 unique cases**. The headline figure is 21.94%.
+16,029,869 cases remain once everything flagged is removed. That count is
+provisional, because stage 2 is. Stage 1 at 13.89 percent is the only settled
+rate here, and there is no duplicate rate for this corpus that can be quoted on
+its own yet. One becomes reportable when the audit bounds the stage 2
+false-positive rate.
+
+**Why the stage 2 rate is a lower bound.** Two mechanisms hold it down, and
+neither is a property of the data:
+
+- 8,986,055 cases, 43.76 percent of the corpus, are excluded from stage 2
+  entirely because sex, age or country is missing and they cannot be blocked.
+- 1,663,031 cases, 14.41 percent of the stage 2 denominator, were already
+  superseded by stage 1. They sit in the denominator but cannot reach the
+  numerator, because a match on a record that stage 1 already resolved is
+  discarded when the results are written. Excluding them would put the rate at
+  16.74 percent rather than 14.33.
+
+A third, smaller effect: 4,646 cases have a complete blocking key but are alone
+in their block, so nothing is ever compared against them.
+
+**On the arithmetic.** The three counts add exactly: 2,851,499 + 1,653,845 =
+4,505,344. That is not because the populations are disjoint, since both stages
+range over the whole corpus and 1,663,031 cases appear in both. They add because
+a probabilistic match is discarded at write time when its record is already
+recorded as superseded, so no case is counted under both rules.
 
 ### A known weakness of the similarity criteria, measured
 

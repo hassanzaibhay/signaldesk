@@ -110,33 +110,40 @@ def test_each_rate_is_computed_against_its_own_population() -> None:
     runs on cases with a complete blocking key, a strict subset. Summing both
     numerators over the smaller denominator inflates the result, which is what an
     earlier report did: it published 39.0 percent where the corpus rate is 21.9.
+
+    Round numbers rather than corpus figures on purpose: this asserts denominator
+    discipline, and pinning it to a measured corpus total would make it fail as a
+    regression the first time deduplication is legitimately recounted.
     """
     stats = DedupStats(
-        records_considered=11_544_512,
-        records_excluded_null_key=8_986_055,
-        records_flagged=4_505_344,
-        records_flagged_version=2_851_499,
-        records_flagged_probabilistic=1_653_845,
+        records_considered=600,
+        records_excluded_null_key=400,
+        records_flagged=150,
+        records_flagged_version=90,
+        records_flagged_probabilistic=60,
         from_store=True,
     )
     corpus = {
         "date_precision_event_dt": {},
-        "case_field_nulls": {"cases": 20_535_213},
+        "case_field_nulls": {"cases": 1000},
         "prod_ai": {"rows_total": 10, "rows_with_value": 9},
     }
 
     rates = build_report([_result("2013Q1")], stats, corpus=corpus)["rates"]
 
-    assert rates["stage1_superseded_of_all_cases"]["denominator"] == 20_535_213
-    assert rates["stage1_superseded_of_all_cases"]["rate"] == pytest.approx(0.1389, abs=1e-4)
+    # Version supersession is checked on every case.
+    assert rates["stage1_superseded_of_all_cases"]["denominator"] == 1000
+    assert rates["stage1_superseded_of_all_cases"]["rate"] == pytest.approx(90 / 1000)
 
-    assert rates["stage2_matched_of_blockable_cases"]["denominator"] == 11_544_512
-    assert rates["stage2_matched_of_blockable_cases"]["rate"] == pytest.approx(0.1433, abs=1e-4)
+    # Probabilistic matching only sees cases that could be blocked.
+    assert rates["stage2_matched_of_blockable_cases"]["denominator"] == 600
+    assert rates["stage2_matched_of_blockable_cases"]["rate"] == pytest.approx(60 / 600)
 
-    assert rates["overall_duplicate_of_all_cases"]["denominator"] == 20_535_213
-    assert rates["overall_duplicate_of_all_cases"]["rate"] == pytest.approx(0.2194, abs=1e-4)
+    # The overall rate is against the corpus, not the blockable subset.
+    assert rates["overall_duplicate_of_all_cases"]["denominator"] == 1000
+    assert rates["overall_duplicate_of_all_cases"]["rate"] == pytest.approx(150 / 1000)
 
-    assert rates["unique_cases"] == 16_029_869
+    assert rates["unique_cases"] == 1000 - 150
     # Every rate is a share of its own population, so none can exceed one.
     for key in (
         "stage1_superseded_of_all_cases",

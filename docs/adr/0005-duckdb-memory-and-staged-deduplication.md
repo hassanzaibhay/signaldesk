@@ -104,6 +104,37 @@ report and stays out of the README until a hand audit of sampled pairs gives a
 false-positive rate per subset. Stage 1 is unaffected: it applies the published
 rule deterministically.
 
+### Stratum definition
+
+The sparse stratum is defined on ingredient-set cardinality, not on raw
+drug-string count: a record is sparse when its normalized ingredient set has
+cardinality one and it has exactly one reaction.
+
+This matters because the two definitions disagree. Stage 2 currently compares
+raw drug strings, so a single string naming a combination product expands into
+several ingredients once normalized, and the record leaves the sparse stratum
+without anything about the underlying report having changed. The consequences:
+
+- The rates measured here, 39.41 percent sparse against 7.68 percent richer,
+  were computed over the raw-string stratum definition. They are not comparable
+  to post-normalization figures.
+- The re-run recounts stratum membership from ingredient-set cardinality rather
+  than re-executing the matcher against strata assigned before normalization.
+  Reporting a naive delta would credit normalization with a shift that is partly
+  definitional.
+- The audit sample is drawn from the post-normalization population, and the
+  stratum definition is recorded alongside the seed and the commit, so the
+  binomial interval attaches to a denominator that can be identified later.
+
+Separately, stage 2 today evaluates every case, including those stage 1 has
+already superseded, and discards matches on superseded records when results are
+written. That is redundant computation, and it leaves the stage 2 denominator
+inconsistent with its numerator: 1,663,031 cases sit in the denominator unable
+to reach the numerator. The re-run restricts stage 2's population to stage 1
+survivors, which removes both problems and moves the rate. The pre-run and
+post-run stage 2 rates are therefore not comparable for this reason as well as
+for the stratum redefinition.
+
 ### Candidate rules, to be chosen after the audit and not before
 
 1. **Corroboration requirement.** A sparse pair additionally requires agreement
