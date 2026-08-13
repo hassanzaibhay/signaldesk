@@ -103,6 +103,49 @@ def test_duplicate_rate_is_per_record_not_per_pair() -> None:
     assert dedup["stage2_rate"] <= 1.0
 
 
+def test_each_rate_is_computed_against_its_own_population() -> None:
+    """The two stages do not share a denominator.
+
+    Version supersession is checked on every case. Probabilistic matching only
+    runs on cases with a complete blocking key, a strict subset. Summing both
+    numerators over the smaller denominator inflates the result, which is what an
+    earlier report did: it published 39.0 percent where the corpus rate is 21.9.
+    """
+    stats = DedupStats(
+        records_considered=11_544_512,
+        records_excluded_null_key=8_986_055,
+        records_flagged=4_505_344,
+        records_flagged_version=2_851_499,
+        records_flagged_probabilistic=1_653_845,
+        from_store=True,
+    )
+    corpus = {
+        "date_precision_event_dt": {},
+        "case_field_nulls": {"cases": 20_535_213},
+        "prod_ai": {"rows_total": 10, "rows_with_value": 9},
+    }
+
+    rates = build_report([_result("2013Q1")], stats, corpus=corpus)["rates"]
+
+    assert rates["stage1_superseded_of_all_cases"]["denominator"] == 20_535_213
+    assert rates["stage1_superseded_of_all_cases"]["rate"] == pytest.approx(0.1389, abs=1e-4)
+
+    assert rates["stage2_matched_of_blockable_cases"]["denominator"] == 11_544_512
+    assert rates["stage2_matched_of_blockable_cases"]["rate"] == pytest.approx(0.1433, abs=1e-4)
+
+    assert rates["overall_duplicate_of_all_cases"]["denominator"] == 20_535_213
+    assert rates["overall_duplicate_of_all_cases"]["rate"] == pytest.approx(0.2194, abs=1e-4)
+
+    assert rates["unique_cases"] == 16_029_869
+    # Every rate is a share of its own population, so none can exceed one.
+    for key in (
+        "stage1_superseded_of_all_cases",
+        "stage2_matched_of_blockable_cases",
+        "overall_duplicate_of_all_cases",
+    ):
+        assert 0.0 <= rates[key]["rate"] <= 1.0
+
+
 def test_counts_the_manifest_cannot_supply_read_as_unknown() -> None:
     """Zero would assert something nobody measured."""
     rebuilt = QuarterResult(quarter=Quarter.parse("2013Q1"))
@@ -154,4 +197,5 @@ def test_empty_run_does_not_divide_by_zero() -> None:
     report = build_report([], None)
     assert report["rows"]["totals"] == {}
     assert report["prod_ai_coverage"]["share"] == 0.0
-    assert report["deduplication"]["stage1_rate"] == 0.0
+    # No pass, so no rates section rather than a section full of zeroes.
+    assert "rates" not in report

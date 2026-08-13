@@ -135,15 +135,49 @@ The consequence, which must travel with the number: **the reported duplicate rat
 is a lower bound.** Records too sparse to block reliably cannot be matched. The
 excluded count and share are reported alongside the rate rather than buried.
 
-### A known weakness of the similarity criteria
+### Rates are reported against the population each rule applies to
 
-Roughly 19% of blockable records carry exactly one drug and one reaction. For a
-one-element set, Jaccard is either 0 or 1, so the 0.8 threshold degenerates into
-an exact-match test on a single drug and a single term. Within a block of the
-same sex, age and country, that will pair unrelated patients who happen to share
-a common drug and a common event.
+The two stages have different denominators, and sharing one overstates the
+result. Version supersession is checked on every case. Probabilistic matching is
+only attempted on cases with a complete blocking key, a strict subset.
 
-This inflates the *pair* count substantially without inflating the *record* count
-to the same degree, because one record pairs with many. It also makes the choice
-of survivor within a large matched clique close to arbitrary. The rate is
-reported per record, not per pair, for this reason.
+| Rate | Measured | Population |
+|---|---|---|
+| Stage 1 supersession | 2,851,499 / 20,535,213 = **13.89%** | every case |
+| Stage 2 match | 1,653,845 / 11,549,158 = **14.32%** | cases with a complete blocking key |
+| Overall duplicate | 4,505,344 / 20,535,213 = **21.94%** | every case |
+
+That leaves **16,029,869 unique cases**. The headline figure is 21.94%.
+
+### A known weakness of the similarity criteria, measured
+
+About 21% of blockable records carry exactly one drug and one reaction. For a
+one-element set Jaccard is either 0 or 1, so the 0.8 threshold degenerates into
+an exact-match test on a single drug and a single term.
+
+That sounds strict, and it is not. Within a block already fixed to one sex, one
+rounded age and one country, agreement on a single common drug and a single
+common event happens readily by chance:
+
+| Subset | Blockable | Matched | Rate |
+|---|---|---|---|
+| Sparse: one drug, one reaction | 2,417,690 | 952,693 | **39.41%** |
+| Richer | 9,131,468 | 701,197 | **7.68%** |
+
+Sparse records match at 5.1 times the rate of richer ones. They are 21% of the
+blockable population and produce 58% of all probabilistic matches. The direction
+of the error on these records is over-merging, not under-merging.
+
+The threshold is deliberately left alone. Relaxing it for singletons would make
+any two records sharing one drug, one reaction, sex, age and country a
+duplicate, which is worse. Tightening it globally would discard real matches
+among richer records, which are behaving reasonably.
+
+**These figures are provisional.** Stage 2 compares raw drug name strings, so one
+ingredient under several trade names counts as several set members. The pass is
+repeated against normalized ingredients once drug normalization exists, and the
+delta is reported. Note the expected direction: normalization increases
+agreement, so the sparse subset should match *more*, not less. If it does, the
+lever is a minimum-evidence rule - requiring more than one distinct drug or
+reaction before a probabilistic match is allowed - rather than a threshold
+change.

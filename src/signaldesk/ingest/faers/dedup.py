@@ -104,6 +104,10 @@ class DedupStats:
     #: measured by a pass, so the report can say which are unavailable.
     from_store: bool = False
     records_flagged: int | None = None
+    #: Flagged records split by which rule caught them. The two rules apply to
+    #: different populations, so they cannot share a denominator.
+    records_flagged_version: int | None = None
+    records_flagged_probabilistic: int | None = None
     blocks: int = 0
     largest_block: int = 0
     comparisons: int = 0
@@ -507,6 +511,8 @@ def stats_from_store(settings: Settings | None = None) -> DedupStats:
         excluded = _count_excluded(handle, root, start=None, end=None)
 
     flagged = Duplicate.objects.values("primaryid").distinct().count()
+    by_version = Duplicate.objects.filter(method=METHOD_VERSION).count()
+    by_probability = Duplicate.objects.filter(method=METHOD_PROBABILISTIC).count()
     cross_quarter = Duplicate.objects.filter(cross_quarter=True).count()
     log.info("faers.dedup.stats_from_store", flagged=flagged, cross_quarter=cross_quarter)
 
@@ -515,6 +521,8 @@ def stats_from_store(settings: Settings | None = None) -> DedupStats:
         records_excluded_null_key=excluded,
         cross_quarter_pairs=cross_quarter,
         records_flagged=flagged,
+        records_flagged_version=by_version,
+        records_flagged_probabilistic=by_probability,
         from_store=True,
     )
 

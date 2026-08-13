@@ -84,9 +84,6 @@ def build_report(
             if counters_present
             else None,
             "stage1_withdrawn_by_source": stage1_deleted if counters_present else None,
-            "stage1_rate": _rate(
-                stage1_versions + stage1_deleted, cases + stage1_versions + stage1_deleted
-            ),
             "stage1_superseded_versions_across_quarters": version_pairs,
         },
         "normalization_nulls": null_totals,
@@ -124,6 +121,16 @@ def build_report(
         }
 
     if dedup is not None:
+        total_cases = (corpus or {}).get("case_field_nulls", {}).get("cases", cases)
+        by_version = dedup.records_flagged_version
+        by_probability = dedup.records_flagged_probabilistic
+        report["rates"] = _rates(
+            total_cases=total_cases,
+            blockable=dedup.records_considered,
+            flagged_total=dedup.duplicate_records,
+            flagged_by_version=by_version if by_version is not None else version_pairs,
+            flagged_by_probability=by_probability,
+        )
         report["deduplication"].update(
             {
                 "stage2_source": "stored results" if dedup.from_store else "measured by this pass",
@@ -151,10 +158,61 @@ def build_report(
                     "on the remaining keys, because a null key is not evidence of "
                     "similarity and relaxing it would manufacture false merges."
                 ),
+                "provisional": (
+                    "Stage 2 compares raw drug name strings, so one ingredient under "
+                    "several trade names counts as several set members. These figures "
+                    "are provisional until the pass is repeated against normalized "
+                    "ingredients, which is expected to raise the match rate."
+                ),
             }
         )
 
     return report
+
+
+def _rates(
+    *,
+    total_cases: int,
+    blockable: int,
+    flagged_total: int,
+    flagged_by_version: int,
+    flagged_by_probability: int | None,
+) -> dict[str, Any]:
+    """The duplicate rates, each against the population its rule applies to.
+
+    The two stages do not share a denominator, and treating them as if they did
+    overstates the result. Version supersession is checked on every case in the
+    corpus. Probabilistic matching is only attempted on cases with a complete
+    blocking key, which is a strict subset. Summing the two numerators and
+    dividing by the smaller denominator inflates the rate, which is what an
+    earlier version of this report did.
+    """
+    probabilistic = (
+        flagged_by_probability
+        if flagged_by_probability is not None
+        else max(flagged_total - flagged_by_version, 0)
+    )
+    return {
+        "stage1_superseded_of_all_cases": {
+            "numerator": flagged_by_version,
+            "denominator": total_cases,
+            "population": "every case in the corpus",
+            "rate": _rate(flagged_by_version, total_cases),
+        },
+        "stage2_matched_of_blockable_cases": {
+            "numerator": probabilistic,
+            "denominator": blockable,
+            "population": "cases with a complete blocking key",
+            "rate": _rate(probabilistic, blockable),
+        },
+        "overall_duplicate_of_all_cases": {
+            "numerator": flagged_total,
+            "denominator": total_cases,
+            "population": "every case in the corpus",
+            "rate": _rate(flagged_total, total_cases),
+        },
+        "unique_cases": max(total_cases - flagged_total, 0),
+    }
 
 
 def _rate(numerator: int, denominator: int) -> float:
@@ -190,6 +248,22 @@ def render(report: dict[str, Any]) -> str:
     for dataset, count in sorted(report["rows"]["totals"].items()):
         lines.append(f"  {dataset:<14} {count:>12,}")
 
+    rates = report.get("rates")
+    if rates:
+        lines.append("")
+        lines.append("duplicate rates, each against the population its rule applies to")
+        for key in (
+            "stage1_superseded_of_all_cases",
+            "stage2_matched_of_blockable_cases",
+            "overall_duplicate_of_all_cases",
+        ):
+            entry = rates[key]
+            lines.append(
+                f"  {key:<38} {entry['rate']:>8.2%}"
+                f"  ({entry['numerator']:,} / {entry['denominator']:,}, {entry['population']})"
+            )
+        lines.append(f"  {'unique cases':<38} {rates['unique_cases']:>8,}")
+
     dedup = report["deduplication"]
     lines.append("")
     lines.append("deduplication")
@@ -215,7 +289,6 @@ def render(report: dict[str, Any]) -> str:
         lines.append(
             f"  stage 2 records flagged            {dedup.get('stage2_duplicate_records', 0):>12,}"
         )
-        lines.append(f"  stage 2 rate                       {dedup['stage2_rate']:>12.4%}")
         lines.append(
             f"  stage 2 cross-quarter share        {dedup['stage2_cross_quarter_share']:>12.4%}"
         )

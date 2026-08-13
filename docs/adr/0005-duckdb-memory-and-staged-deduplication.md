@@ -64,3 +64,34 @@ A general lesson worth keeping, since the remaining corpora are larger than this
 one: an operation whose working set scales with the corpus cannot be fixed by
 raising a limit, and the fact that raising it moved the failure rather than
 removing it is the signal to change the shape instead.
+
+## The figures this pass produced are provisional
+
+Stage 2 compares raw drug name strings. One ingredient published under several
+trade names, or with a dose in the string, counts as several distinct set
+members, so the comparison is weaker than it looks.
+
+The pass is therefore repeated against normalized ingredients once drug
+normalization exists, that run produces the canonical duplicate table, and the
+delta between the two is reported. Until then these numbers stand as a baseline
+rather than as the answer.
+
+The baseline to measure that delta against, by set size, probabilistic matches
+only:
+
+| Subset | Blockable | Matched | Rate |
+|---|---|---|---|
+| Sparse: one drug, one reaction | 2,417,690 | 952,693 | 39.41% |
+| Richer | 9,131,468 | 701,197 | 7.68% |
+
+Sparse records match at 5.1 times the rate of the rest, and produce 58 percent
+of all matches from 21 percent of the population. On a one-element set Jaccard
+is binary, so the threshold reduces to exact agreement on a single drug and a
+single term, which inside a block already fixed to one sex, age and country is
+not a demanding test.
+
+Note the direction this implies for the repeat run: normalization increases
+agreement between sets, so the sparse subset should match more after it, not
+less. If that happens, the lever is a minimum-evidence rule rather than a
+threshold change, since relaxing the threshold makes the same problem worse and
+tightening it discards good matches among richer records.

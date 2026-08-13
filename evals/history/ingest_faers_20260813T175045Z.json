@@ -16,7 +16,7 @@
   },
   "deduplication": {
     "interpretation": "The stage 2 rate is a lower bound. Records missing sex, age or country are excluded from blocking entirely rather than matched on the remaining keys, because a null key is not evidence of similarity and relaxing it would manufacture false merges.",
-    "stage1_rate": 0.0,
+    "provisional": "Stage 2 compares raw drug name strings, so one ingredient under several trade names counts as several set members. These figures are provisional until the pass is repeated against normalized ingredients, which is expected to raise the match rate.",
     "stage1_superseded_versions_across_quarters": 2851499,
     "stage1_superseded_versions_within_quarter": null,
     "stage1_withdrawn_by_source": null,
@@ -34,7 +34,7 @@
     "stage2_records_excluded_null_blocking_key": 8986055,
     "stage2_source": "stored results"
   },
-  "generated_at": "2026-08-13T14:52:20.834258+00:00",
+  "generated_at": "2026-08-13T17:50:45.474768+00:00",
   "normalization_nulls": {},
   "prod_ai_coverage": {
     "note": "The source only publishes prod_ai from 2014Q3 onward; earlier rows are null by construction, not by data quality.",
@@ -129,6 +129,27 @@
       "2018Q4",
       "2019Q1"
     ]
+  },
+  "rates": {
+    "overall_duplicate_of_all_cases": {
+      "denominator": 20535213,
+      "numerator": 4505344,
+      "population": "every case in the corpus",
+      "rate": 0.219396
+    },
+    "stage1_superseded_of_all_cases": {
+      "denominator": 20535213,
+      "numerator": 2851499,
+      "population": "every case in the corpus",
+      "rate": 0.138859
+    },
+    "stage2_matched_of_blockable_cases": {
+      "denominator": 11549158,
+      "numerator": 1653845,
+      "population": "cases with a complete blocking key",
+      "rate": 0.1432
+    },
+    "unique_cases": 16029869
   },
   "rows": {
     "per_quarter": {
