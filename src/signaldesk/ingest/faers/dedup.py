@@ -110,6 +110,17 @@ class DedupStats:
     pairs: list[tuple[int, int, float, float, bool]] = field(default_factory=list)
 
     @property
+    def duplicate_records(self) -> int:
+        """Records judged to duplicate another one.
+
+        Not the same as `duplicate_pairs`, and the difference is large: one
+        record can pair with many others, so pairs run to tens of millions while
+        the records they implicate run to a few million. A rate computed from
+        pairs exceeds 100 percent and means nothing. Rates use this.
+        """
+        return len(self.pairs)
+
+    @property
     def cross_quarter_share(self) -> float:
         """Share of detected duplicates whose members sit in different quarters.
 

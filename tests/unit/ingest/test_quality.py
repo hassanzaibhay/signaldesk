@@ -85,6 +85,37 @@ def test_dedup_section_carries_the_exclusion_and_its_interpretation() -> None:
     assert "lower bound" in dedup["interpretation"]
 
 
+def test_duplicate_rate_is_per_record_not_per_pair() -> None:
+    """A rate over pairs exceeds 100 percent and means nothing.
+
+    One record pairs with many others, so the full corpus produced 27 million
+    pairs against 11.5 million records considered. Dividing those gives 235
+    percent, which is how a meaningless number reaches a published artifact.
+    """
+    stats = DedupStats(records_considered=1000, duplicate_pairs=2500)
+    stats.pairs = [(i, i + 1, 1.0, 1.0, False) for i in range(200)]
+
+    report = build_report([_result("2013Q1")], stats)
+    dedup = report["deduplication"]
+
+    assert dedup["stage2_duplicate_records"] == 200
+    assert dedup["stage2_rate"] == pytest.approx(0.2)
+    assert dedup["stage2_rate"] <= 1.0
+
+
+def test_counts_the_manifest_cannot_supply_read_as_unknown() -> None:
+    """Zero would assert something nobody measured."""
+    rebuilt = QuarterResult(quarter=Quarter.parse("2013Q1"))
+    rebuilt.row_counts = {"case": 100}
+
+    report = build_report([rebuilt], None)
+    dedup = report["deduplication"]
+
+    assert dedup["stage1_superseded_versions_within_quarter"] is None
+    assert dedup["stage1_withdrawn_by_source"] is None
+    assert "not recorded" in render(report)
+
+
 def test_report_without_dedup_omits_the_stage2_keys() -> None:
     report = build_report([_result("2013Q1")], None)
     assert "stage2_duplicate_pairs" not in report["deduplication"]
@@ -92,8 +123,13 @@ def test_report_without_dedup_omits_the_stage2_keys() -> None:
 
 def test_rendered_report_states_the_headline_numbers() -> None:
     stats = DedupStats(
-        records_considered=600, records_excluded_null_key=400, duplicate_pairs=50,
-        cross_quarter_pairs=35, blocks=12, largest_block=90, comparisons=1000,
+        records_considered=600,
+        records_excluded_null_key=400,
+        duplicate_pairs=50,
+        cross_quarter_pairs=35,
+        blocks=12,
+        largest_block=90,
+        comparisons=1000,
         naive_comparisons=180_000,
     )
     text = render(build_report([_result("2013Q1")], stats))

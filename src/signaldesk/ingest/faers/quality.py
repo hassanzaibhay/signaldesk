@@ -55,6 +55,9 @@ def build_report(
             precision_totals[precision] = precision_totals.get(precision, 0) + count
 
     cases = row_totals.get("case", 0)
+    # A result rebuilt from the manifest carries row counts but not the
+    # per-quarter normalization counters, which only exist while ingest runs.
+    counters_present = any(result.date_precision or result.null_counts for result in ingested)
     stage1_versions = sum(result.stage1_removed_versions for result in ingested)
     stage1_deleted = sum(result.stage1_removed_deleted for result in ingested)
     prod_ai_present = sum(result.prod_ai_present for result in ingested)
@@ -74,8 +77,13 @@ def build_report(
             "totals": row_totals,
         },
         "deduplication": {
-            "stage1_superseded_versions_within_quarter": stage1_versions,
-            "stage1_withdrawn_by_source": stage1_deleted,
+            # None rather than 0 when the run that produced these results is not
+            # the run writing the report: the manifest does not store them, and
+            # reporting zero would assert something nobody measured.
+            "stage1_superseded_versions_within_quarter": stage1_versions
+            if counters_present
+            else None,
+            "stage1_withdrawn_by_source": stage1_deleted if counters_present else None,
             "stage1_rate": _rate(
                 stage1_versions + stage1_deleted, cases + stage1_versions + stage1_deleted
             ),
@@ -107,11 +115,11 @@ def build_report(
         # any time rather than only for the process that did the ingest.
         report["date_precision_event_dt"] = corpus["date_precision_event_dt"]
         report["case_field_nulls"] = corpus["case_field_nulls"]
-        measured = corpus["prod_ai"]
+        coverage = corpus["prod_ai"]
         report["prod_ai_coverage"] = {
-            "rows_with_value": measured["rows_with_value"],
-            "rows_total": measured["rows_total"],
-            "share": _rate(measured["rows_with_value"], measured["rows_total"]),
+            "rows_with_value": coverage["rows_with_value"],
+            "rows_total": coverage["rows_total"],
+            "share": _rate(coverage["rows_with_value"], coverage["rows_total"]),
             "note": report["prod_ai_coverage"]["note"],
         }
 
@@ -126,9 +134,12 @@ def build_report(
                 "stage2_comparisons": dedup.comparisons,
                 "stage2_comparisons_if_naive": dedup.naive_comparisons,
                 "stage2_duplicate_pairs": dedup.duplicate_pairs,
+                "stage2_duplicate_records": dedup.duplicate_records,
                 "stage2_cross_quarter_pairs": dedup.cross_quarter_pairs,
                 "stage2_cross_quarter_share": round(dedup.cross_quarter_share, 6),
-                "stage2_rate": _rate(dedup.duplicate_pairs, dedup.records_considered),
+                # Records, not pairs. One record pairs with many, so a rate
+                # computed from pairs runs past 100 percent and means nothing.
+                "stage2_rate": _rate(dedup.duplicate_records, dedup.records_considered),
                 "interpretation": (
                     "The stage 2 rate is a lower bound. Records missing sex, age or "
                     "country are excluded from blocking entirely rather than matched "
@@ -177,15 +188,24 @@ def render(report: dict[str, Any]) -> str:
     dedup = report["deduplication"]
     lines.append("")
     lines.append("deduplication")
+    within = dedup["stage1_superseded_versions_within_quarter"]
     lines.append(
-        f"  stage 1 superseded within quarter  {dedup['stage1_superseded_versions_within_quarter']:>12,}"
+        "  stage 1 superseded within quarter  "
+        + (f"{within:>12,}" if within is not None else "  not recorded")
     )
     lines.append(
         f"  stage 1 superseded across quarters {dedup['stage1_superseded_versions_across_quarters']:>12,}"
     )
-    lines.append(f"  stage 1 withdrawn by source        {dedup['stage1_withdrawn_by_source']:>12,}")
+    withdrawn = dedup["stage1_withdrawn_by_source"]
+    lines.append(
+        "  stage 1 withdrawn by source        "
+        + (f"{withdrawn:>12,}" if withdrawn is not None else "  not recorded")
+    )
     if "stage2_duplicate_pairs" in dedup:
         lines.append(f"  stage 2 duplicate pairs            {dedup['stage2_duplicate_pairs']:>12,}")
+        lines.append(
+            f"  stage 2 records flagged            {dedup.get('stage2_duplicate_records', 0):>12,}"
+        )
         lines.append(f"  stage 2 rate                       {dedup['stage2_rate']:>12.4%}")
         lines.append(
             f"  stage 2 cross-quarter share        {dedup['stage2_cross_quarter_share']:>12.4%}"
