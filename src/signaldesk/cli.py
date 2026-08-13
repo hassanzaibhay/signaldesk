@@ -276,8 +276,21 @@ def ingest_faers_status() -> None:
 def ingest_faers_quality(
     from_quarter: Annotated[str | None, typer.Option("--from", help="First quarter.")] = None,
     to_quarter: Annotated[str | None, typer.Option("--to", help="Last quarter.")] = None,
+    recompute: Annotated[
+        bool,
+        typer.Option(
+            "--recompute",
+            help="Run deduplication again instead of using stored results. Takes about an hour.",
+        ),
+    ] = False,
 ) -> None:
-    """Recompute and print the quality report from what is loaded."""
+    """Write and print the quality report for what is loaded.
+
+    Uses the last recorded pass, or the stored corpus and duplicate table, so
+    the report is a fast rebuild rather than an hour of recomputation. Pass
+    --recompute to measure again; figures only a pass can produce are reported
+    as unavailable otherwise.
+    """
     _setup_django()
     from signaldesk.analytics import faers as analytics
     from signaldesk.ingest.faers import quality
@@ -286,6 +299,7 @@ def ingest_faers_quality(
         resolve_versions_across_quarters,
         save_stats,
         stage2,
+        stats_from_store,
     )
     from signaldesk.ingest.faers.quarter import Quarter
 
@@ -295,10 +309,11 @@ def ingest_faers_quality(
     results = _results_from_manifest(start, end)
     # Reuse the last pass rather than repeating an hour of comparison; only
     # recompute when no pass has been recorded, and record it when we do.
-    stats = load_stats()
-    if stats is None:
+    if recompute:
         stats = stage2(start=start, end=end)
         save_stats(stats)
+    else:
+        stats = load_stats() or stats_from_store()
     report = quality.build_report(
         results,
         stats,

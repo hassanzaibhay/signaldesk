@@ -100,6 +100,10 @@ class DedupStats:
 
     records_considered: int = 0
     records_excluded_null_key: int = 0
+    #: Set when the figures were rebuilt from stored results rather than
+    #: measured by a pass, so the report can say which are unavailable.
+    from_store: bool = False
+    records_flagged: int | None = None
     blocks: int = 0
     largest_block: int = 0
     comparisons: int = 0
@@ -118,7 +122,7 @@ class DedupStats:
         the records they implicate run to a few million. A rate computed from
         pairs exceeds 100 percent and means nothing. Rates use this.
         """
-        return len(self.pairs)
+        return self.records_flagged if self.records_flagged is not None else len(self.pairs)
 
     @property
     def cross_quarter_share(self) -> float:
@@ -126,10 +130,15 @@ class DedupStats:
 
         The number that justifies running this corpus-wide: anything above zero
         is invisible to a per-quarter pass.
+
+        Measured by a pass this is a share of pairs. Rebuilt from stored results
+        the pair count is unavailable and the numerator is a count of flagged
+        records, so the denominator has to match or the share reads as zero.
         """
-        if not self.duplicate_pairs:
+        denominator = self.duplicate_records if self.from_store else self.duplicate_pairs
+        if not denominator:
             return 0.0
-        return self.cross_quarter_pairs / self.duplicate_pairs
+        return self.cross_quarter_pairs / denominator
 
     @property
     def excluded_share(self) -> float:
@@ -194,11 +203,20 @@ def prefix_length(size: int, threshold: float) -> int:
     return max(1, size - math.ceil(threshold * size) + 1)
 
 
-def _candidate_pairs(members: list[BlockRecord], threshold: float) -> set[tuple[int, int]]:
-    """Pairs that could reach the threshold, by size and prefix filtering."""
+def _candidate_pairs(members: list[BlockRecord], threshold: float) -> Iterator[tuple[int, int]]:
+    """Yield pairs that could reach the threshold, by size and prefix filtering.
+
+    A generator, not a set. The largest block in the corpus holds 109,667
+    records, and collecting its candidates before scoring any of them builds a
+    structure with hundreds of millions of entries: memory grows with the square
+    of the biggest block, which is the one thing this filtering exists to avoid.
+    Yielding keeps the working set to one block's inverted index.
+
+    Duplicate suggestions from two shared prefix tokens are suppressed per
+    record with a small set bounded by the block, rather than globally.
+    """
     ordered = sorted(members, key=lambda record: len(record.reactions))
     index: dict[str, list[int]] = defaultdict(list)
-    candidates: set[tuple[int, int]] = set()
 
     for position, record in enumerate(ordered):
         size = len(record.reactions)
@@ -206,13 +224,15 @@ def _candidate_pairs(members: list[BlockRecord], threshold: float) -> set[tuple[
             continue
         lower_bound = size * threshold
         prefix = sorted(record.reactions)[: prefix_length(size, threshold)]
+        suggested: set[int] = set()
         for token in prefix:
             for other in index[token]:
+                if other in suggested:
+                    continue
+                suggested.add(other)
                 if len(ordered[other].reactions) >= lower_bound:
-                    candidates.add((other, position))
+                    yield (ordered[other].index, ordered[position].index)
             index[token].append(position)
-
-    return {(ordered[a].index, ordered[b].index) for a, b in candidates}
 
 
 def stage2(
@@ -466,6 +486,39 @@ def _duplicate_rows(stats: DedupStats, version_pairs: list[tuple[int, int]]) -> 
         )
 
 
+def stats_from_store(settings: Settings | None = None) -> DedupStats:
+    """Rebuild what can be rebuilt from the stored corpus and duplicate table.
+
+    Everything except the pass-only figures - block count, largest block, and
+    the two comparison counts - is recoverable: the corpus is on disk and the
+    judgements are in the database. Those four are marked unavailable rather
+    than defaulted, because a zero there would read as a measurement.
+    """
+    settings = settings or get_settings()
+    root = parquet_root(settings)
+
+    with connect(settings) as handle:
+        considered = handle.execute(
+            f"""
+            SELECT count(*) FROM read_parquet('{root}/case/*/*.parquet', hive_partitioning := true)
+            WHERE sex IS NOT NULL AND country IS NOT NULL AND age_years IS NOT NULL
+            """
+        ).fetchone()
+        excluded = _count_excluded(handle, root, start=None, end=None)
+
+    flagged = Duplicate.objects.values("primaryid").distinct().count()
+    cross_quarter = Duplicate.objects.filter(cross_quarter=True).count()
+    log.info("faers.dedup.stats_from_store", flagged=flagged, cross_quarter=cross_quarter)
+
+    return DedupStats(
+        records_considered=int(considered[0]) if considered else 0,
+        records_excluded_null_key=excluded,
+        cross_quarter_pairs=cross_quarter,
+        records_flagged=flagged,
+        from_store=True,
+    )
+
+
 def stats_path(settings: Settings | None = None) -> Path:
     """Where the last deduplication run's measurements are kept."""
     settings = settings or get_settings()
@@ -519,12 +572,20 @@ def load_stats(settings: Settings | None = None) -> DedupStats | None:
     )
 
 
-def persist(stats: DedupStats, version_pairs: list[tuple[int, int]]) -> int:
+def persist(
+    stats: DedupStats,
+    version_pairs: list[tuple[int, int]],
+    settings: Settings | None = None,
+) -> int:
     """Replace the duplicate table with the results of one coherent run.
 
     Rebuild rather than append: appending would accumulate the findings of
     successive runs over different corpora and different code, with no way to
     tell afterwards which rows came from which.
+
+    `settings` is threaded through rather than defaulted, because the stats file
+    it writes is real state: a caller pointed at a scratch directory, such as a
+    test, must not overwrite the record of the last production pass.
 
     Two properties this has to have, both learned by not having them. The whole
     replacement is one transaction, so a failure leaves the previous results in
@@ -540,7 +601,7 @@ def persist(stats: DedupStats, version_pairs: list[tuple[int, int]]) -> int:
         while batch := list(islice(rows, PERSIST_BATCH_ROWS)):
             Duplicate.objects.bulk_create(batch, batch_size=PERSIST_BATCH_ROWS)
             written += len(batch)
-    save_stats(stats)
+    save_stats(stats, settings)
     log.info("faers.dedup.persisted", rows=written)
     return written
 

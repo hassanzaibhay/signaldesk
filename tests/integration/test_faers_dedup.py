@@ -82,20 +82,35 @@ def test_filtering_beats_naive_comparison(loaded: Settings) -> None:
     assert stats.comparisons <= stats.naive_comparisons
 
 
+def test_persist_writes_stats_beside_its_own_data(loaded: Settings) -> None:
+    """A scoped caller must not overwrite the production record.
+
+    persist writes the pass measurements to disk. Defaulting that path meant a
+    test run replaced the real corpus figures with fixture-sized ones, and the
+    next report published them.
+    """
+    from signaldesk.ingest.faers.dedup import stats_path
+
+    persist(stage2(loaded), resolve_versions_across_quarters(loaded), loaded)
+
+    assert stats_path(loaded).is_file()
+    assert loaded.data_dir in stats_path(loaded).parents
+
+
 def test_persist_rebuilds_rather_than_appends(loaded: Settings) -> None:
     stats = stage2(loaded)
     versions = resolve_versions_across_quarters(loaded)
 
-    first = persist(stats, versions)
+    first = persist(stats, versions, loaded)
     after_first = Duplicate.objects.count()
-    second = persist(stats, versions)
+    second = persist(stats, versions, loaded)
 
     assert first == second
     assert Duplicate.objects.count() == after_first
 
 
 def test_persisted_rows_carry_their_evidence(loaded: Settings) -> None:
-    persist(stage2(loaded), resolve_versions_across_quarters(loaded))
+    persist(stage2(loaded), resolve_versions_across_quarters(loaded), loaded)
 
     row = Duplicate.objects.filter(method=METHOD_PROBABILISTIC).first()
     assert row is not None

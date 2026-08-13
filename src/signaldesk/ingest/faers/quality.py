@@ -126,14 +126,19 @@ def build_report(
     if dedup is not None:
         report["deduplication"].update(
             {
+                "stage2_source": "stored results" if dedup.from_store else "measured by this pass",
                 "stage2_records_considered": dedup.records_considered,
                 "stage2_records_excluded_null_blocking_key": dedup.records_excluded_null_key,
                 "stage2_excluded_share": round(dedup.excluded_share, 6),
-                "stage2_blocks": dedup.blocks,
-                "stage2_largest_block": dedup.largest_block,
-                "stage2_comparisons": dedup.comparisons,
-                "stage2_comparisons_if_naive": dedup.naive_comparisons,
-                "stage2_duplicate_pairs": dedup.duplicate_pairs,
+                # Only a pass measures these. Rebuilt from stored results they
+                # are unavailable, and null says so where zero would not.
+                "stage2_blocks": None if dedup.from_store else dedup.blocks,
+                "stage2_largest_block": None if dedup.from_store else dedup.largest_block,
+                "stage2_comparisons": None if dedup.from_store else dedup.comparisons,
+                "stage2_comparisons_if_naive": (
+                    None if dedup.from_store else dedup.naive_comparisons
+                ),
+                "stage2_duplicate_pairs": None if dedup.from_store else dedup.duplicate_pairs,
                 "stage2_duplicate_records": dedup.duplicate_records,
                 "stage2_cross_quarter_pairs": dedup.cross_quarter_pairs,
                 "stage2_cross_quarter_share": round(dedup.cross_quarter_share, 6),
@@ -202,7 +207,11 @@ def render(report: dict[str, Any]) -> str:
         + (f"{withdrawn:>12,}" if withdrawn is not None else "  not recorded")
     )
     if "stage2_duplicate_pairs" in dedup:
-        lines.append(f"  stage 2 duplicate pairs            {dedup['stage2_duplicate_pairs']:>12,}")
+        pairs = dedup["stage2_duplicate_pairs"]
+        lines.append(
+            "  stage 2 duplicate pairs            "
+            + (f"{pairs:>12,}" if pairs is not None else "  not recorded")
+        )
         lines.append(
             f"  stage 2 records flagged            {dedup.get('stage2_duplicate_records', 0):>12,}"
         )
@@ -216,11 +225,19 @@ def render(report: dict[str, Any]) -> str:
         lines.append(
             f"  excluded share                     {dedup['stage2_excluded_share']:>12.4%}"
         )
-        lines.append(f"  comparisons made                   {dedup['stage2_comparisons']:>12,}")
-        lines.append(
-            f"  comparisons if naive               {dedup['stage2_comparisons_if_naive']:>12,}"
-        )
-        lines.append(f"  largest block                      {dedup['stage2_largest_block']:>12,}")
+        lines.append(f"  figures from                       {dedup['stage2_source']:>12}")
+
+        # Only a pass measures these; a rebuild says so rather than printing 0.
+        for key, label in [
+            ("stage2_comparisons", "comparisons made"),
+            ("stage2_comparisons_if_naive", "comparisons if naive"),
+            ("stage2_largest_block", "largest block"),
+            ("stage2_blocks", "blocks"),
+        ]:
+            value = dedup.get(key)
+            lines.append(
+                f"  {label:<34}" + (f"{value:>12,}" if value is not None else "  not recorded")
+            )
 
     coverage = report["prod_ai_coverage"]
     lines.append("")
