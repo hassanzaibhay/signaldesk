@@ -66,8 +66,11 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install dependencies
         run: uv pip install --system -e . --group dev
-      - name: Run unit tests with coverage
-        run: pytest -m unit --cov --cov-report=term-missing
+      - name: Run unit tests
+        # No coverage gate here: this job runs the unit subset only, and the
+        # floor is a property of the whole suite. It is enforced in the
+        # integration job, which can reach the code that needs a database.
+        run: pytest -m unit
 
   integration:
     name: integration
@@ -112,8 +115,10 @@ jobs:
         run: uv pip install --system -e . --group dev
       - name: Create the database extensions
         run: psql "postgresql://signaldesk:signaldesk@localhost:5432/signaldesk" -f docker/postgres-init.sql
-      - name: Run integration tests
-        run: pytest -m integration
+      - name: Run the full suite with coverage
+        # Everything, so the coverage floor is measured against the whole
+        # project rather than against the subset that needs no services.
+        run: pytest --cov --cov-report=term-missing
 
   portability:
     name: portability
@@ -127,8 +132,12 @@ jobs:
         run: python scripts/check_hygiene.py
       - name: No CRLF line endings in tracked text files
         run: |
-          if git ls-files --eol | grep -E 'i/crlf|i/mixed|w/crlf|w/mixed'; then
-            echo "tracked files must use LF endings"
+          # Files explicitly marked -text are exempt: that attribute is how a
+          # byte-exact fixture declares that its line endings are data, not
+          # style. Everything else must use LF.
+          if git ls-files --eol | grep -v 'attr/-text' | grep -E 'i/crlf|i/mixed|w/crlf|w/mixed'; then
+            echo "tracked text files must use LF endings"
+            echo "a fixture that must keep its bytes belongs in .gitattributes as -text"
             exit 1
           fi
       - name: No symlinks

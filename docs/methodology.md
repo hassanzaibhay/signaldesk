@@ -135,6 +135,47 @@ The consequence, which must travel with the number: **the reported duplicate rat
 is a lower bound.** Records too sparse to block reliably cannot be matched. The
 excluded count and share are reported alongside the rate rather than buried.
 
+### What is settled and what is not
+
+Stage 1 is settled. Version supersession applies the source's own published rule
+deterministically: keep the highest version per case identifier. There is no
+estimate in it and nothing to validate.
+
+**Stage 2 is provisional, and its output does not go in the README yet.** It is a
+probabilistic judgement whose false-positive rate has not been measured. The
+reason for caution is specific rather than general: 58 percent of its matches
+come from records carrying one drug and one reaction, where the similarity test
+reduces to exact agreement on two common values. Nothing measured so far
+distinguishes a genuinely high duplicate rate from a high false merge rate, and
+published probabilistic deduplication work on this source generally reports
+lower figures than 21.94 percent.
+
+A number without evidence behind it does not ship, so the overall rate carries
+that status in the committed report until the audit below is done.
+
+### Measuring the false-positive rate
+
+This source has no gold standard for duplicates, so precision has to be
+estimated directly from a hand audit rather than derived.
+
+The procedure, in the order it must happen:
+
+1. Draw a stratified random sample of flagged pairs, fixed seed recorded: pairs
+   from the sparse subset and pairs from the richer subset, sampled separately
+   because their error rates are expected to differ by a wide margin.
+2. Emit one row per pair carrying everything a person needs to judge it side by
+   side: both case identifiers, receipt and event dates with their precision
+   flags, sex, age, weight, country and which column supplied it, the full drug
+   and reaction lists, outcome codes, reporter occupation, and manufacturer
+   sender. The verdict field is left empty.
+3. Hassan annotates against a written guideline. The labels are not generated,
+   in line with the rule that ground truth is human-curated.
+4. Report the false-positive rate per subset with a binomial confidence
+   interval, and the correction it implies for the overall duplicate rate.
+
+The tooling is built in the drug normalization prompt, alongside the stage 2
+re-run, so the audit and the re-run inform each other.
+
 ### Rates are reported against the population each rule applies to
 
 The two stages have different denominators, and sharing one overstates the
@@ -172,6 +213,29 @@ The threshold is deliberately left alone. Relaxing it for singletons would make
 any two records sharing one drug, one reaction, sex, age and country a
 duplicate, which is worse. Tightening it globally would discard real matches
 among richer records, which are behaving reasonably.
+
+The lever is minimum evidence rather than threshold, but which rule to apply
+depends on how wrong the sparse matches actually are, and that is what the audit
+measures. Two candidates, neither adopted before the measurement:
+
+1. **Corroboration.** A sparse pair additionally has to agree on at least one
+   high-information field: event date at day precision, manufacturer sender, or
+   weight within a tolerance. Keeps sparse records in scope and demands one
+   piece of evidence that is unlikely to coincide.
+2. **Exclusion.** Sparse records are removed from stage 2 and counted, exactly
+   as records with an incomplete blocking key already are, making the reported
+   rate an explicit lower bound over a smaller population.
+
+Option 2 is the conservative default if the audit shows a high false-positive
+rate and corroboration does not bring it down.
+
+The textbook approach is inverse-frequency weighting: a shared rare drug is
+strong evidence and a shared common one is nearly none, so terms are weighted by
+how often they occur rather than counted equally. That is what a production
+pharmacovigilance system does, and it would handle the sparse case naturally.
+It is not proposed here for an honest reason: calibrating the weights, and
+choosing the threshold on the weighted score, needs labelled pairs, and this
+source provides none. It is worth revisiting once the audit has produced some.
 
 **These figures are provisional.** Stage 2 compares raw drug name strings, so one
 ingredient under several trade names counts as several set members. The pass is

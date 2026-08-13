@@ -34,7 +34,7 @@
     "stage2_records_excluded_null_blocking_key": 8986055,
     "stage2_source": "stored results"
   },
-  "generated_at": "2026-08-13T17:50:45.474768+00:00",
+  "generated_at": "2026-08-13T17:58:43.127335+00:00",
   "normalization_nulls": {},
   "prod_ai_coverage": {
     "note": "The source only publishes prod_ai from 2014Q3 onward; earlier rows are null by construction, not by data quality.",
@@ -135,19 +135,22 @@
       "denominator": 20535213,
       "numerator": 4505344,
       "population": "every case in the corpus",
-      "rate": 0.219396
+      "rate": 0.219396,
+      "status": "Provisional. Stage 2 is probabilistic and its false-positive rate has not been measured: 58 percent of its matches come from records carrying one drug and one reaction, where the similarity test reduces to exact agreement on two common values. Nothing here yet distinguishes a high true duplicate rate from a high false merge rate. Pending a hand audit of sampled pairs, this figure does not go in the README."
     },
     "stage1_superseded_of_all_cases": {
       "denominator": 20535213,
       "numerator": 2851499,
       "population": "every case in the corpus",
-      "rate": 0.138859
+      "rate": 0.138859,
+      "status": "Settled. Version supersession is the published rule applied deterministically, not an estimate."
     },
     "stage2_matched_of_blockable_cases": {
       "denominator": 11549158,
       "numerator": 1653845,
       "population": "cases with a complete blocking key",
-      "rate": 0.1432
+      "rate": 0.1432,
+      "status": "Provisional. Stage 2 is probabilistic and its false-positive rate has not been measured: 58 percent of its matches come from records carrying one drug and one reaction, where the similarity test reduces to exact agreement on two common values. Nothing here yet distinguishes a high true duplicate rate from a high false merge rate. Pending a hand audit of sampled pairs, this figure does not go in the README."
     },
     "unique_cases": 16029869
   },

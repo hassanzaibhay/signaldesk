@@ -192,24 +192,38 @@ def _rates(
         if flagged_by_probability is not None
         else max(flagged_total - flagged_by_version, 0)
     )
+    provisional = (
+        "Provisional. Stage 2 is probabilistic and its false-positive rate has "
+        "not been measured: 58 percent of its matches come from records carrying "
+        "one drug and one reaction, where the similarity test reduces to exact "
+        "agreement on two common values. Nothing here yet distinguishes a high "
+        "true duplicate rate from a high false merge rate. Pending a hand audit "
+        "of sampled pairs, this figure does not go in the README."
+    )
     return {
         "stage1_superseded_of_all_cases": {
             "numerator": flagged_by_version,
             "denominator": total_cases,
             "population": "every case in the corpus",
             "rate": _rate(flagged_by_version, total_cases),
+            "status": (
+                "Settled. Version supersession is the published rule applied "
+                "deterministically, not an estimate."
+            ),
         },
         "stage2_matched_of_blockable_cases": {
             "numerator": probabilistic,
             "denominator": blockable,
             "population": "cases with a complete blocking key",
             "rate": _rate(probabilistic, blockable),
+            "status": provisional,
         },
         "overall_duplicate_of_all_cases": {
             "numerator": flagged_total,
             "denominator": total_cases,
             "population": "every case in the corpus",
             "rate": _rate(flagged_total, total_cases),
+            "status": provisional,
         },
         "unique_cases": max(total_cases - flagged_total, 0),
     }

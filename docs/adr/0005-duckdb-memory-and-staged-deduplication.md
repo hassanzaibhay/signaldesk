@@ -92,6 +92,35 @@ not a demanding test.
 
 Note the direction this implies for the repeat run: normalization increases
 agreement between sets, so the sparse subset should match more after it, not
-less. If that happens, the lever is a minimum-evidence rule rather than a
-threshold change, since relaxing the threshold makes the same problem worse and
-tightening it discards good matches among richer records.
+less. A rise there is expected and is not by itself evidence of a problem; it
+has to be read against the audit rather than at face value.
+
+### The rate is provisional until precision is measured
+
+Because 58 percent of stage 2 matches come from the weakest-evidence subset,
+nothing measured so far separates a high true duplicate rate from a high false
+merge rate. The overall figure is therefore marked provisional in the committed
+report and stays out of the README until a hand audit of sampled pairs gives a
+false-positive rate per subset. Stage 1 is unaffected: it applies the published
+rule deterministically.
+
+### Candidate rules, to be chosen after the audit and not before
+
+1. **Corroboration requirement.** A sparse pair additionally requires agreement
+   on at least one high-information field: event date at day precision,
+   manufacturer sender, or weight within tolerance.
+2. **Exclusion.** Sparse records are excluded from stage 2 and counted,
+   symmetric with the existing exclusion for an incomplete blocking key, making
+   the reported rate an explicit lower bound.
+
+Option 2 is the conservative default if the audit shows a high false-positive
+rate and option 1 does not bring it down far enough. Both are defensible; the
+audit decides which, because a 10 percent error rate and a 70 percent error rate
+call for different rules.
+
+The approach a production system would take is inverse-frequency weighting,
+scoring a shared rare drug as strong evidence and a shared common one as almost
+none, rather than treating set members as equal. It is named here as the right
+long-term answer and not adopted now, because calibrating the weights and the
+score threshold needs labelled pairs that this source does not provide. The
+audit is the first step towards having any.
