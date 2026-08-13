@@ -10,3 +10,9 @@ Dockerfile text eol=lf
 *.png      binary
 *.parquet  binary
 *.zip      binary
+
+# Fixtures are byte-exact copies of published extracts. Some of them use CRLF
+# and some LF, sometimes within one archive, and the reader is tested against
+# exactly that. Normalising line endings on checkout would quietly remove the
+# property the fixture exists to prove.
+tests/fixtures/** -text
