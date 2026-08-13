@@ -22,8 +22,11 @@ from signaldesk.core.logging import get_logger
 
 log = get_logger(__name__)
 
-#: Kept modest on purpose: the container is sharing a laptop with a browser.
-DEFAULT_MEMORY_LIMIT = "4GB"
+#: Corpus-wide grouping over twenty million cases needs real headroom; four
+#: gigabytes is not enough to sort them even with spilling enabled. Still well
+#: inside what the container is given, and the engine spills beyond this rather
+#: than failing.
+DEFAULT_MEMORY_LIMIT = "8GB"
 DEFAULT_THREADS = 4
 
 
@@ -52,6 +55,18 @@ def connect(
     connection = duckdb.connect(str(target), read_only=read_only)
     connection.execute(f"SET memory_limit='{DEFAULT_MEMORY_LIMIT}'")
     connection.execute(f"SET threads={DEFAULT_THREADS}")
+
+    # Somewhere to spill to. Corpus-wide aggregates over tens of millions of
+    # rows do not fit in the memory limit, and without a temp directory the
+    # engine has nowhere to go but out of memory.
+    spill = settings.data_dir / "duckdb-tmp"
+    spill.mkdir(parents=True, exist_ok=True)
+    connection.execute(f"SET temp_directory='{spill}'")
+
+    # Row order is never meaningful here: every query that matters either
+    # aggregates or carries its own ORDER BY. Releasing the guarantee lets the
+    # engine spill in operators that otherwise have to stay in memory.
+    connection.execute("SET preserve_insertion_order=false")
     return connection
 
 

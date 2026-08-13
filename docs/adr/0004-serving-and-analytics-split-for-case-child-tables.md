@@ -60,11 +60,37 @@ application serves those tables row by row: every consumer of them is an
 aggregate, and the contingency builder reads Parquet regardless because a
 full-corpus cross-tabulation is what the analytical engine is for.
 
+## Measured outcome
+
+The projection above was made from five quarters. The full corpus has since been
+ingested, so the estimate can be replaced with the real figures.
+
+| | Projected | Measured |
+|---|---|---|
+| Cases | 17,750,562 | 20,534,506 |
+| Postgres, after the split | 4.48 GB | 4.95 GB |
+| Parquet, all datasets | 0.96 GB | 1.20 GB |
+| Total, excluding headroom | 5.44 GB | 6.15 GB |
+
+The corpus is 16 percent larger than projected, because quarter sizes were
+extrapolated linearly between the earliest and latest quarter and the growth is
+steeper than that. The split still achieves what it was adopted for: 6.15 GB
+against 36.98 GB free, where the unsplit design projected 42.13 GB.
+
+Row counts in the analytical store, from a single glob across all 55 partitions:
+84.6 million drug rows, 66.3 million reactions, 55.8 million indications, 29.3
+million therapies, 15.2 million outcomes, 0.9 million report sources.
+
+One difference worth knowing when reconciling the two stores: Parquet holds
+20,535,213 case rows against Postgres's 20,534,506. Parquet records one row per
+publication and Postgres one row per case, and the 707-row gap is cases the
+source republished in a later quarter.
+
 ## Consequences
 
 Projected Postgres for the full corpus falls from 31.18 GB to about 4.2 GB, and
 the total requirement from 42.13 GB to roughly 15.2 GB, which fits with room to
-spare.
+spare. Measured, it came to 6.15 GB of data.
 
 Per-case detail pages need one DuckDB query per case rather than an ORM join.
 That is a millisecond-scale read against a columnar file with statistics, and it

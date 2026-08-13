@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 import duckdb
@@ -79,6 +80,9 @@ METHOD_PROBABILISTIC = "probabilistic_v1"
 #: directly. The value is not a quality knob: the filters are exact, so this only
 #: decides when the index is worth building.
 BLOCK_INDEX_THRESHOLD = 50
+
+#: Rows pulled from the engine at a time while streaming blocks.
+FETCH_BATCH_ROWS = 50_000
 
 
 @dataclass(slots=True)
@@ -201,68 +205,16 @@ def stage2(
     settings = settings or get_settings()
     stats = DedupStats()
     root = parquet_root(settings)
-
-    with connect(settings) as handle:
-        rows = _load_blocking_input(handle, root, start=start, end=end)
-        stats.records_excluded_null_key = _count_excluded(handle, root, start=start, end=end)
-
-    stats.records_considered = len(rows)
-    blocks: dict[tuple[str, float, str], list[BlockRecord]] = defaultdict(list)
-    for record in rows:
-        blocks[record.block_key].append(record)
-
-    stats.blocks = len(blocks)
     seen: dict[int, tuple[int, float, float, bool]] = {}
 
-    for members in blocks.values():
-        size = len(members)
-        stats.largest_block = max(stats.largest_block, size)
-        stats.naive_comparisons += size * (size - 1) // 2
-        if size < 2:
-            continue
+    with connect(settings) as handle:
+        stats.records_excluded_null_key = _count_excluded(handle, root, start=start, end=end)
+        _stage_input(handle, root, start=start, end=end)
 
-        pairs = (
-            _candidate_pairs(members, REACTION_THRESHOLD)
-            if size >= BLOCK_INDEX_THRESHOLD
-            else {
-                (members[a].index, members[b].index)
-                for a in range(size)
-                for b in range(a + 1, size)
-            }
-        )
-
-        by_index = {record.index: record for record in members}
-        for left_index, right_index in pairs:
-            left, right = by_index[left_index], by_index[right_index]
-            if left.caseid == right.caseid:
-                continue
-            stats.comparisons += 1
-            reaction_similarity = jaccard(left.reactions, right.reactions)
-            if reaction_similarity < REACTION_THRESHOLD:
-                continue
-            drug_similarity = jaccard(left.drugs, right.drugs)
-            # Sex and country are equal by construction: they are the block key.
-            if not is_duplicate(
-                drug_similarity,
-                reaction_similarity,
-                same_sex=True,
-                age_difference=abs(left.age - right.age),
-                same_country=True,
-            ):
-                continue
-
-            # The most recently received report is kept as canonical.
-            survivor, superseded = (left, right) if left.fda_dt >= right.fda_dt else (right, left)
-            cross_quarter = left.quarter != right.quarter
-            stats.duplicate_pairs += 1
-            if cross_quarter:
-                stats.cross_quarter_pairs += 1
-            seen[superseded.primaryid] = (
-                survivor.primaryid,
-                drug_similarity,
-                reaction_similarity,
-                cross_quarter,
-            )
+        for members in _blocks(handle):
+            stats.records_considered += len(members)
+            stats.blocks += 1
+            _compare_block(members, stats, seen)
 
     stats.pairs = [
         (primaryid, canonical, drug_similarity, reaction_similarity, cross_quarter)
@@ -287,6 +239,58 @@ def stage2(
     return stats
 
 
+def _compare_block(
+    members: list[BlockRecord],
+    stats: DedupStats,
+    seen: dict[int, tuple[int, float, float, bool]],
+) -> None:
+    """Score one block, recording the duplicates it contains."""
+    size = len(members)
+    stats.largest_block = max(stats.largest_block, size)
+    stats.naive_comparisons += size * (size - 1) // 2
+    if size < 2:
+        return
+
+    pairs = (
+        _candidate_pairs(members, REACTION_THRESHOLD)
+        if size >= BLOCK_INDEX_THRESHOLD
+        else {(members[a].index, members[b].index) for a in range(size) for b in range(a + 1, size)}
+    )
+
+    by_index = {record.index: record for record in members}
+    for left_index, right_index in pairs:
+        left, right = by_index[left_index], by_index[right_index]
+        if left.caseid == right.caseid:
+            continue
+        stats.comparisons += 1
+        reaction_similarity = jaccard(left.reactions, right.reactions)
+        if reaction_similarity < REACTION_THRESHOLD:
+            continue
+        drug_similarity = jaccard(left.drugs, right.drugs)
+        # Sex and country are equal by construction: they are the block key.
+        if not is_duplicate(
+            drug_similarity,
+            reaction_similarity,
+            same_sex=True,
+            age_difference=abs(left.age - right.age),
+            same_country=True,
+        ):
+            continue
+
+        # The most recently received report is kept as canonical.
+        survivor, superseded = (left, right) if left.fda_dt >= right.fda_dt else (right, left)
+        cross_quarter = left.quarter != right.quarter
+        stats.duplicate_pairs += 1
+        if cross_quarter:
+            stats.cross_quarter_pairs += 1
+        seen[superseded.primaryid] = (
+            survivor.primaryid,
+            drug_similarity,
+            reaction_similarity,
+            cross_quarter,
+        )
+
+
 def _quarter_filter(start: Quarter | None, end: Quarter | None) -> str:
     clauses = []
     if start is not None:
@@ -296,57 +300,108 @@ def _quarter_filter(start: Quarter | None, end: Quarter | None) -> str:
     return (" AND " + " AND ".join(clauses)) if clauses else ""
 
 
-def _load_blocking_input(
+def _stage_input(
     handle: duckdb.DuckDBPyConnection,
     root: object,
     *,
     start: Quarter | None,
     end: Quarter | None,
-) -> list[BlockRecord]:
-    """Cases with a complete blocking key, with their drug and reaction sets."""
-    where = _quarter_filter(start, end)
-    query = f"""
-        SELECT c.primaryid, c.caseid, c.quarter, c.sex, c.country,
-               round(c.age_years) AS age_r, c.fda_dt,
-               coalesce(d.drugs, []) AS drugs, coalesce(r.reacs, []) AS reacs
-        FROM read_parquet('{root}/case/*/*.parquet', hive_partitioning := true) c
-        LEFT JOIN (
-            SELECT primaryid, list_distinct(list(drugname_raw)) AS drugs
-            FROM read_parquet('{root}/drug/*/*.parquet', hive_partitioning := true)
-            WHERE drugname_raw IS NOT NULL GROUP BY primaryid
-        ) d USING (primaryid)
-        LEFT JOIN (
-            SELECT primaryid, list_distinct(list(pt)) AS reacs
-            FROM read_parquet('{root}/reaction/*/*.parquet', hive_partitioning := true)
-            WHERE pt IS NOT NULL GROUP BY primaryid
-        ) r USING (primaryid)
-        WHERE c.sex IS NOT NULL AND c.country IS NOT NULL AND c.age_years IS NOT NULL {where}
+) -> None:
+    """Materialise the deduplication input to disk, in stages.
+
+    Twenty million cases joined against fifty million drug rows and forty-five
+    million reaction rows, collapsed into per-case sets, does not fit in memory,
+    and no memory limit makes it fit: the working set grows with the corpus.
+
+    So it is built as tables rather than returned as a result. Each CREATE TABLE
+    streams its output to the database file instead of accumulating it for the
+    client, and the expensive grouping happens once rather than once per read.
     """
-    return [
-        BlockRecord(
-            index=index,
-            primaryid=int(primaryid),
-            caseid=int(caseid),
-            quarter=str(quarter),
-            sex=str(sex),
-            country=str(country),
-            age=float(age),
-            fda_dt=str(fda_dt) if fda_dt is not None else "",
-            drugs=frozenset(drugs or []),
-            reactions=frozenset(reactions or []),
+    where = _quarter_filter(start, end)
+
+    handle.execute("DROP TABLE IF EXISTS dedup_input")
+    handle.execute("DROP TABLE IF EXISTS dedup_drug")
+    handle.execute("DROP TABLE IF EXISTS dedup_reaction")
+
+    log.info("faers.dedup.staging", step="drug_sets")
+    handle.execute(f"""
+        CREATE TABLE dedup_drug AS
+        SELECT primaryid, list_distinct(list(drugname_raw)) AS drugs
+        FROM read_parquet('{root}/drug/*/*.parquet', hive_partitioning := true)
+        WHERE drugname_raw IS NOT NULL
+        GROUP BY primaryid
+    """)
+
+    log.info("faers.dedup.staging", step="reaction_sets")
+    handle.execute(f"""
+        CREATE TABLE dedup_reaction AS
+        SELECT primaryid, list_distinct(list(pt)) AS reactions
+        FROM read_parquet('{root}/reaction/*/*.parquet', hive_partitioning := true)
+        WHERE pt IS NOT NULL
+        GROUP BY primaryid
+    """)
+
+    log.info("faers.dedup.staging", step="blockable_cases")
+    handle.execute(f"""
+        CREATE TABLE dedup_input AS
+        SELECT c.primaryid, c.caseid, c.quarter, c.sex, c.country,
+               round(c.age_years) AS age_r, coalesce(c.fda_dt::VARCHAR, '') AS fda_dt,
+               coalesce(d.drugs, []) AS drugs, coalesce(r.reactions, []) AS reactions
+        FROM read_parquet('{root}/case/*/*.parquet', hive_partitioning := true) c
+        LEFT JOIN dedup_drug d USING (primaryid)
+        LEFT JOIN dedup_reaction r USING (primaryid)
+        WHERE c.sex IS NOT NULL AND c.country IS NOT NULL AND c.age_years IS NOT NULL {where}
+        QUALIFY count(*) OVER (PARTITION BY c.sex, round(c.age_years), c.country) > 1
+    """)
+    handle.execute("DROP TABLE dedup_drug")
+    handle.execute("DROP TABLE dedup_reaction")
+
+
+def _blocks(handle: duckdb.DuckDBPyConnection) -> Iterator[list[BlockRecord]]:
+    """Yield one block at a time from the staged input.
+
+    Read in coarse groups of (sex, country) and sorted by age within the group,
+    so each query returns a bounded slice and the blocks inside it arrive
+    together. Sorting the whole staged table at once is the operation that runs
+    the engine out of memory; sorting one country's records does not.
+    """
+    groups = handle.execute(
+        "SELECT DISTINCT sex, country FROM dedup_input ORDER BY sex, country"
+    ).fetchall()
+
+    index = 0
+    for sex, country in groups:
+        handle.execute(
+            "SELECT primaryid, caseid, quarter, sex, country, age_r, fda_dt, drugs, reactions "
+            "FROM dedup_input WHERE sex = ? AND country = ? ORDER BY age_r",
+            [sex, country],
         )
-        for index, (
-            primaryid,
-            caseid,
-            quarter,
-            sex,
-            country,
-            age,
-            fda_dt,
-            drugs,
-            reactions,
-        ) in enumerate(handle.execute(query).fetchall())
-    ]
+        current: list[BlockRecord] = []
+        current_key: tuple[str, float, str] | None = None
+
+        while batch := handle.fetchmany(FETCH_BATCH_ROWS):
+            for row in batch:
+                record = BlockRecord(
+                    index=index,
+                    primaryid=int(row[0]),
+                    caseid=int(row[1]),
+                    quarter=str(row[2]),
+                    sex=str(row[3]),
+                    country=str(row[4]),
+                    age=float(row[5]),
+                    fda_dt=str(row[6]),
+                    drugs=frozenset(row[7] or []),
+                    reactions=frozenset(row[8] or []),
+                )
+                index += 1
+                if current_key is not None and record.block_key != current_key:
+                    yield current
+                    current = []
+                current_key = record.block_key
+                current.append(record)
+
+        if current:
+            yield current
 
 
 def _count_excluded(

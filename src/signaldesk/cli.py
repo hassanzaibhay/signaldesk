@@ -13,12 +13,18 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import TYPE_CHECKING, Annotated, NoReturn
 
 import typer
 
 from signaldesk import __version__
 from signaldesk.core.logging import configure_logging, get_logger
+
+if TYPE_CHECKING:
+    # Type-only: importing these for real pulls in the ORM, and the app registry
+    # is not loaded until a command that needs it calls _setup_django.
+    from signaldesk.ingest.faers.pipeline import QuarterResult
+    from signaldesk.ingest.faers.quarter import Quarter
 
 log = get_logger(__name__)
 
@@ -101,6 +107,32 @@ def version() -> None:
     typer.echo(__version__)
 
 
+def _results_from_manifest(
+    start: Quarter | None = None, end: Quarter | None = None
+) -> list[QuarterResult]:
+    """Rebuild per-quarter results from the manifest.
+
+    The manifest is what the ingest actually recorded, so a report built from it
+    describes the corpus on disk rather than the arguments of the current call.
+    """
+    from signaldesk.ingest.faers.pipeline import QuarterResult
+    from signaldesk.ingest.faers.quarter import Quarter
+    from signaldesk.web.signals.models import IngestManifest
+
+    results: list[QuarterResult] = []
+    rows = IngestManifest.objects.filter(source="faers", status="completed").order_by("unit")
+    for row in rows:
+        quarter = Quarter.parse(row.unit)
+        if (start is not None and quarter < start) or (end is not None and quarter > end):
+            continue
+        result = QuarterResult(quarter=quarter)
+        result.row_counts = dict(row.row_counts or {})
+        result.had_deleted_file = row.had_deleted_file
+        result.bytes_downloaded = row.bytes_downloaded
+        results.append(result)
+    return results
+
+
 @ingest_app.command("faers")
 def ingest_faers(
     from_quarter: Annotated[
@@ -181,6 +213,7 @@ def ingest_faers_dedup(
     table rather than adding to it.
     """
     _setup_django()
+    from signaldesk.ingest.faers import quality
     from signaldesk.ingest.faers.dedup import persist, resolve_versions_across_quarters, stage2
     from signaldesk.ingest.faers.quarter import Quarter
 
@@ -190,6 +223,14 @@ def ingest_faers_dedup(
     version_pairs = resolve_versions_across_quarters()
     stats = stage2(start=start, end=end)
     rows = persist(stats, version_pairs)
+
+    # Write the report here rather than only from the ingest command: this pass
+    # is where the deduplication numbers are measured, and an artifact assembled
+    # anywhere else would be a transcription of them rather than a record.
+    report = quality.build_report(
+        _results_from_manifest(start, end), stats, version_pairs=len(version_pairs)
+    )
+    path = quality.write_report(report)
 
     typer.echo(f"records considered:        {stats.records_considered:,}")
     typer.echo(
@@ -203,6 +244,7 @@ def ingest_faers_dedup(
     typer.echo(f"cross-quarter share:       {stats.cross_quarter_share:.2%}")
     typer.echo(f"superseded across quarters:{len(version_pairs):,}")
     typer.echo(f"rows written:              {rows:,}")
+    typer.echo(f"report written to {path}")
 
 
 @ingest_app.command("faers-status")
@@ -235,24 +277,12 @@ def ingest_faers_quality(
     _setup_django()
     from signaldesk.ingest.faers import quality
     from signaldesk.ingest.faers.dedup import resolve_versions_across_quarters, stage2
-    from signaldesk.ingest.faers.pipeline import QuarterResult
     from signaldesk.ingest.faers.quarter import Quarter
-    from signaldesk.web.signals.models import IngestManifest
 
     start = Quarter.parse(from_quarter) if from_quarter else None
     end = Quarter.parse(to_quarter) if to_quarter else None
 
-    results = []
-    for row in IngestManifest.objects.filter(source="faers", status="completed").order_by("unit"):
-        quarter = Quarter.parse(row.unit)
-        if (start and quarter < start) or (end and quarter > end):
-            continue
-        result = QuarterResult(quarter=quarter)
-        result.row_counts = dict(row.row_counts or {})
-        result.had_deleted_file = row.had_deleted_file
-        result.bytes_downloaded = row.bytes_downloaded
-        results.append(result)
-
+    results = _results_from_manifest(start, end)
     stats = stage2(start=start, end=end)
     report = quality.build_report(
         results, stats, version_pairs=len(resolve_versions_across_quarters())
