@@ -1,0 +1,400 @@
+primaryid$caseid$indi_drug_seq$indi_pt
+100640841$10064084$1$Endocarditis staphylococcal
+32990183$3299018$1$HIV infection
+32990183$3299018$2$HIV infection
+32990183$3299018$3$HIV infection
+35387833$3538783$1$Multiple sclerosis
+35387833$3538783$2$Multiple sclerosis
+35387833$3538783$3$Multiple sclerosis
+35387833$3538783$4$Multiple sclerosis
+375988510$3759885$1$Renal transplant
+375988510$3759885$2$Renal transplant
+39367613$3936761$1$Multiple sclerosis
+39378142$3937814$1$Pulmonary arterial hypertension
+39781792$3978179$1$Aortic valve replacement
+400084210$4000842$1$Chronic hepatitis C
+400084210$4000842$2$Chronic hepatitis C
+40312014$4031201$1$Epilepsy
+40312014$4031201$1$Unevaluable event
+40312014$4031201$2$Unevaluable event
+40412892$4041289$1$Small cell lung cancer
+40412892$4041289$2$Nausea
+40412892$4041289$5$Nausea
+40656403$4065640$1$Neoplasm malignant
+40656403$4065640$2$Herpes zoster
+41281802$4128180$1$Type 2 diabetes mellitus
+41281892$4128189$1$Hepatitis C
+41281892$4128189$2$Hepatitis C
+41486972$4148697$1$Product used for unknown indication
+41486972$4148697$2$Type 2 diabetes mellitus
+41623273$4162327$1$Diabetes mellitus
+41623492$4162349$1$Product used for unknown indication
+41631162$4163116$1$Product used for unknown indication
+41636652$4163665$1$Product used for unknown indication
+41637662$4163766$1$Type 2 diabetes mellitus
+417616010$4176160$1$Acne
+417616010$4176160$2$Skin papilloma
+417616010$4176160$4$Contraception
+418171819$4181718$1$Metastases to bone
+418171819$4181718$3$Gout
+418171819$4181718$6$Wound
+418719115$4187191$1$Vipoma
+418719115$4187191$2$Vipoma
+41872325$4187232$1$Gastrointestinal stromal tumour
+41872325$4187232$3$Anaemia
+41902305$4190230$1$Arthritis
+41902305$4190230$2$Arthritis
+41902305$4190230$3$Arthritis
+41902305$4190230$4$Hypocholesterolaemia
+41902305$4190230$5$Hypocholesterolaemia
+41902305$4190230$6$Arthritis
+50775802$5077580$1$Familial haemophagocytic lymphohistiocytosis
+50775802$5077580$2$Familial haemophagocytic lymphohistiocytosis
+50775802$5077580$3$Familial haemophagocytic lymphohistiocytosis
+52370752$5237075$1$Alpha-1 anti-trypsin deficiency
+56543672$5654367$1$Nausea
+565752519$5657525$1$Acne
+56665985$5666598$1$Metastases to bone
+56665985$5666598$2$Metastases to bone
+56665985$5666598$3$Breast cancer
+56665985$5666598$5$Breast cancer
+56665985$5666598$6$Pain
+56665985$5666598$7$Pain
+56948452$5694845$1$Product used for unknown indication
+56948452$5694845$2$Accidental exposure to product
+56948452$5694845$3$Product used for unknown indication
+57148792$5714879$2$Product used for unknown indication
+57621423$5762142$1$Myalgia
+57628895$5762889$1$Crohn's disease
+57628895$5762889$2$Crohn's disease
+57722293$5772229$1$Crohn's disease
+57722293$5772229$2$Crohn's disease
+57722293$5772229$3$Crohn's disease
+57722293$5772229$4$Crohn's disease
+57722293$5772229$5$Crohn's disease
+57722293$5772229$6$Crohn's disease
+57722293$5772229$7$Nausea
+57722293$5772229$8$Back pain
+57722293$5772229$9$Gastrooesophageal reflux disease
+57744913$5774491$1$Drug withdrawal maintenance therapy
+57744913$5774491$2$Product used for unknown indication
+57744913$5774491$3$Product used for unknown indication
+57744913$5774491$4$Product used for unknown indication
+57772232$5777223$1$Gastrointestinal stromal tumour
+580128318$5801283$1$Bone loss
+58088076$5808807$1$Product used for unknown indication
+58088076$5808807$2$Suicide attempt
+58088076$5808807$3$Suicide attempt
+58088076$5808807$4$Suicide attempt
+58088076$5808807$5$Pain
+58088076$5808807$6$Pain
+58088076$5808807$7$Pain
+58088076$5808807$8$Movement disorder
+58088076$5808807$9$Movement disorder
+58088076$5808807$10$Movement disorder
+58088076$5808807$11$Alcoholic seizure
+58088076$5808807$12$Alcoholic seizure
+58088076$5808807$13$Alcoholic seizure
+58088076$5808807$14$Bipolar disorder
+58088076$5808807$15$Bipolar disorder
+58088076$5808807$16$Bipolar disorder
+58088076$5808807$17$Product used for unknown indication
+58251592$5825159$1$Psoriatic arthropathy
+58251592$5825159$2$Psoriasis
+58287743$5828774$1$Pain
+58364785$5836478$2$Abdominal pain
+58364785$5836478$3$Abdominal pain
+58364785$5836478$4$Product used for unknown indication
+58364785$5836478$5$Urinary tract infection
+58364785$5836478$6$Hypertension
+58364785$5836478$7$Vomiting
+58364785$5836478$8$Pyrexia
+58364785$5836478$9$Pyrexia
+58382624$5838262$1$Multiple sclerosis
+58382624$5838262$2$Multiple sclerosis
+58382624$5838262$3$Multiple sclerosis
+58382624$5838262$4$Multiple sclerosis
+58382624$5838262$5$Multiple sclerosis
+58382624$5838262$6$Multiple sclerosis
+58382624$5838262$7$Depression
+58436939$5843693$1$Pain
+58436939$5843693$2$Pain
+58436939$5843693$3$Pain
+58436939$5843693$4$Pain
+58436939$5843693$5$Pain
+58436939$5843693$6$Pain
+58436939$5843693$7$Pain
+58436939$5843693$8$Pain
+58436939$5843693$9$Pain
+58436939$5843693$10$Pain
+58436939$5843693$11$Pain
+58436939$5843693$12$Product used for unknown indication
+58436939$5843693$13$Product used for unknown indication
+58436939$5843693$14$Product used for unknown indication
+58436939$5843693$15$Product used for unknown indication
+58436939$5843693$16$Product used for unknown indication
+58436939$5843693$17$Product used for unknown indication
+58436939$5843693$18$Product used for unknown indication
+58436939$5843693$19$Product used for unknown indication
+58436939$5843693$20$Product used for unknown indication
+58436939$5843693$21$Product used for unknown indication
+58436939$5843693$22$Product used for unknown indication
+58436939$5843693$23$Product used for unknown indication
+58436939$5843693$24$Product used for unknown indication
+58436939$5843693$25$Product used for unknown indication
+58444523$5844452$1$Hormone replacement therapy
+58444523$5844452$2$Hormone replacement therapy
+58444523$5844452$3$Hormone replacement therapy
+58444523$5844452$4$Hormone replacement therapy
+58444523$5844452$5$Hormone replacement therapy
+58444523$5844452$6$Hormone replacement therapy
+58611944$5861194$1$Drug dependence
+58743212$5874321$1$Product used for unknown indication
+587988317$5879883$1$Metastases to bone
+587988317$5879883$2$Trismus
+587988317$5879883$11$Breast cancer metastatic
+589720023$5897200$1$Plasma cell myeloma
+589720023$5897200$2$Plasma cell myeloma
+589720023$5897200$5$Plasma cell myeloma
+589720023$5897200$6$Plasma cell myeloma
+589720023$5897200$8$Plasma cell myeloma
+589720023$5897200$9$Plasma cell myeloma
+59079532$5907953$1$Antiviral prophylaxis
+59095542$5909554$1$Cytomegalovirus infection
+59095542$5909554$2$Cytomegalovirus infection
+59095542$5909554$3$Cytomegalovirus infection
+592215820$5922158$1$Acne cystic
+592215820$5922158$4$Hypertension
+59331343$5933134$1$Multiple sclerosis
+59337142$5933714$1$Antiretroviral therapy
+59337142$5933714$3$HIV infection
+59337142$5933714$4$HIV infection
+59337142$5933714$6$Antiretroviral therapy
+59337142$5933714$7$Antiretroviral therapy
+59337142$5933714$8$Antiretroviral therapy
+59337142$5933714$9$Antiretroviral therapy
+59337142$5933714$10$Antiretroviral therapy
+59475608$5947560$1$Costochondritis
+59475608$5947560$2$Joint dislocation
+59486102$5948610$2$Anaesthesia
+59486102$5948610$13$Anaesthesia
+59486102$5948610$14$Anaesthesia
+59506123$5950612$1$Antiviral prophylaxis
+59506123$5950612$2$Antiviral prophylaxis
+59506123$5950612$3$Antiviral prophylaxis
+59593802$5959380$1$Prophylaxis against HIV infection
+59593802$5959380$2$HIV infection
+59593802$5959380$3$Product used for unknown indication
+597107828$5971078$1$Breast cancer metastatic
+597107828$5971078$2$Breast cancer metastatic
+597107828$5971078$3$Irritable bowel syndrome
+597107915$5971079$1$Metastases to bone
+597107915$5971079$3$Prostate cancer
+597107915$5971079$10$Chemotherapy
+597109618$5971096$1$Hypercalcaemia of malignancy
+59722983$5972298$1$Diabetes mellitus
+59722983$5972298$2$Diabetes mellitus
+59722983$5972298$3$Hypertension
+59722983$5972298$4$Blood cholesterol increased
+59722983$5972298$8$Hypertension
+59776093$5977609$1$Product used for unknown indication
+59776093$5977609$2$Atrial fibrillation
+59806714$5980671$1$Drug dependence
+59806714$5980671$2$Product used for unknown indication
+59806714$5980671$3$Product used for unknown indication
+59806714$5980671$4$Product used for unknown indication
+59806714$5980671$5$Product used for unknown indication
+59815025$5981502$2$Product used for unknown indication
+59815025$5981502$3$Product used for unknown indication
+59815025$5981502$4$Product used for unknown indication
+59840862$5984086$1$Type 2 diabetes mellitus
+59840862$5984086$2$Hypertriglyceridaemia
+59840862$5984086$3$Diabetes mellitus inadequate control
+59866752$5986675$1$Hypercholesterolaemia
+599726534$5997265$1$Metastases to bone
+599726534$5997265$3$Metastases to bone
+599726534$5997265$6$Breast cancer
+599726534$5997265$7$Breast cancer
+599726534$5997265$8$Breast cancer
+599726534$5997265$9$Depression
+60004342$6000434$1$Drug dependence
+60004342$6000434$3$Product used for unknown indication
+60004342$6000434$4$Product used for unknown indication
+60004342$6000434$5$Product used for unknown indication
+601323723$6013237$2$Metastases to bone
+601323723$6013237$4$Breast cancer
+601323723$6013237$6$Breast cancer
+601323921$6013239$1$Metastases to bone
+601323921$6013239$2$Metastases to bone
+601323921$6013239$6$Metastases to bone
+601323921$6013239$27$Arthritis
+601356912$6013569$1$Metastases to bone
+601356912$6013569$2$Plasmacytoma
+601356912$6013569$5$Hyperlipidaemia
+601414911$6014149$2$Metastases to bone
+601639412$6016394$1$Breast cancer metastatic
+60244882$6024488$1$Multiple sclerosis
+604316422$6043164$1$Breast cancer metastatic
+604316422$6043164$2$Breast cancer metastatic
+604316422$6043164$4$Breast cancer metastatic
+604316422$6043164$6$Breast cancer metastatic
+604316422$6043164$8$Breast cancer metastatic
+604316422$6043164$10$Hypothyroidism
+604316422$6043164$21$Blood cholesterol increased
+604316422$6043164$22$Hypertension
+605788026$6057880$1$Osteoporosis prophylaxis
+605788026$6057880$2$Osteoporosis prophylaxis
+605788026$6057880$6$Skin ulcer
+605788026$6057880$10$Mouth ulceration
+60602919$6060291$1$HIV infection
+60602919$6060291$2$HIV infection
+60602919$6060291$3$HIV infection
+60602919$6060291$4$HIV infection
+60602919$6060291$5$HIV infection
+60602919$6060291$6$HIV infection
+60602919$6060291$7$HIV infection
+60602919$6060291$8$HIV infection
+60602919$6060291$9$HIV infection
+60602919$6060291$10$Hypertension
+60602919$6060291$12$Hyperuricaemia
+60602919$6060291$13$Hypertension
+60602919$6060291$21$Hypertension
+60602919$6060291$23$Ulcer
+60602919$6060291$24$Prophylaxis
+60602919$6060291$25$Osteoporosis
+60602919$6060291$26$Prophylaxis
+60602919$6060291$27$Infection prophylaxis
+60602919$6060291$28$Infection prophylaxis
+60602919$6060291$29$Ulcer
+60602919$6060291$30$Prophylaxis
+60602919$6060291$31$Infection prophylaxis
+60602919$6060291$32$Insomnia
+60602919$6060291$33$Factor VIII deficiency
+60602919$6060291$36$Hyperuricaemia
+60602919$6060291$37$Hypertension
+60602919$6060291$38$Hypertension
+60602919$6060291$39$HIV infection
+606458832$6064588$1$Breast cancer
+606458832$6064588$3$Breast cancer
+606458832$6064588$6$Breast cancer
+60735307$6073530$1$Pain
+60735307$6073530$2$Pain
+60735307$6073530$3$Pain
+60735307$6073530$4$Pain
+60735307$6073530$5$Pain
+60735307$6073530$6$Product used for unknown indication
+60735307$6073530$7$Product used for unknown indication
+60735307$6073530$8$Product used for unknown indication
+60735307$6073530$9$Product used for unknown indication
+60735307$6073530$10$Product used for unknown indication
+607581016$6075810$1$Breast cancer metastatic
+607581016$6075810$2$Breast cancer metastatic
+607581016$6075810$6$Blood pressure
+607581016$6075810$9$Asthma
+607581016$6075810$13$Constipation
+607581016$6075810$14$Asthma
+607581016$6075810$17$Pain
+607581016$6075810$18$Anticoagulant therapy
+60762703$6076270$1$Product used for unknown indication
+608805915$6088059$1$Prostate cancer metastatic
+608805915$6088059$2$Bone cancer
+608805915$6088059$4$Asthma
+608805915$6088059$7$Chronic obstructive pulmonary disease
+608805915$6088059$8$Asthma
+608805915$6088059$12$Prostate cancer metastatic
+608805915$6088059$13$Prostate cancer metastatic
+61673939$6167393$1$Metastases to bone
+61707682$6170768$1$Drug dependence
+61707682$6170768$2$Product used for unknown indication
+61707682$6170768$3$Product used for unknown indication
+61707682$6170768$4$Headache
+62303616$6230361$1$Crohn's disease
+62303616$6230361$2$Crohn's disease
+62303616$6230361$3$Crohn's disease
+62303616$6230361$4$Crohn's disease
+62303616$6230361$5$Crohn's disease
+626418210$6264182$1$Dermatitis atopic
+626418210$6264182$2$Pruritus
+62846373$6284637$1$Convulsion
+62846373$6284637$8$Influenza
+62846373$6284637$11$Pain
+63234313$6323431$1$Chronic fatigue syndrome
+63234313$6323431$1$Fibromyalgia
+63234313$6323431$1$Sleep disorder
+63234313$6323431$2$Back pain
+66158462$6615846$1$Hypertension
+66158462$6615846$2$Hypertension
+66610272$6661027$1$Cataplexy
+66610272$6661027$1$Narcolepsy
+66881193$6688119$1$Rheumatoid arthritis
+67689103$6768910$2$Schizophrenia
+67689103$6768910$3$Bipolar disorder
+67689103$6768910$4$Depression
+67689103$6768910$5$Schizophrenia
+67689103$6768910$6$Bipolar disorder
+67689103$6768910$7$Depression
+67689103$6768910$8$Schizophrenia
+67689103$6768910$9$Bipolar disorder
+67689103$6768910$10$Depression
+67689103$6768910$20$Sleep disorder
+67689103$6768910$21$Gastrooesophageal reflux disease
+67689103$6768910$22$Hypertension
+72006373$7200637$1$HIV infection
+72006373$7200637$2$HIV infection
+72114517$7211451$1$HIV infection
+72114517$7211451$3$HIV infection
+72114517$7211451$5$Product used for unknown indication
+72114517$7211451$7$Product used for unknown indication
+72714583$7271458$1$Contraception
+75180282$7518028$1$Crohn's disease
+75180282$7518028$2$Crohn's disease
+75180282$7518028$3$Crohn's disease
+75181882$7518188$1$Crohn's disease
+75181882$7518188$2$Crohn's disease
+75181882$7518188$3$Crohn's disease
+75181882$7518188$4$Crohn's disease
+75181882$7518188$6$Crohn's disease
+75181882$7518188$7$Crohn's disease
+78287763$7828776$1$Contraception
+78378173$7837817$1$Prophylaxis against gastrointestinal ulcer
+78378173$7837817$2$Pain
+78378173$7837817$3$Pregnancy
+78378173$7837817$4$Vitamin B12 deficiency
+78378173$7837817$5$Pain
+79218955$7921895$1$Depression
+79218955$7921895$4$Depression
+79218955$7921895$11$Depression
+79218955$7921895$12$Depression
+79218955$7921895$14$Anxiety
+84363443$8436344$1$Hypertension
+84363443$8436344$2$Cardiac failure
+84363443$8436344$3$Cardiac failure
+84363443$8436344$4$Hypertension
+92080091$9208009$1$Pulmonary hypertension
+92205661$9220566$1$Epilepsy
+92222331$9222233$1$Neuroblastoma
+92222331$9222233$2$Neuroblastoma
+92222331$9222233$3$Neuroblastoma
+92222331$9222233$4$Prophylaxis
+92222331$9222233$5$Prophylaxis
+92222331$9222233$6$Neuroblastoma
+92222331$9222233$7$Prophylaxis
+92222331$9222233$8$Neuroblastoma
+92263181$9226318$1$Epilepsy
+92303091$9230309$1$Neonatal respiratory distress syndrome
+92326651$9232665$1$Stem cell transplant
+92379143$9237914$1$Choroidal neovascularisation
+92460872$9246087$1$Tonic convulsion
+92460872$9246087$2$Tonic convulsion
+92460872$9246087$3$Tonic convulsion
+92460872$9246087$4$Tonic convulsion
+92460872$9246087$5$Tonic convulsion
+92460872$9246087$6$Tonic convulsion
+92460872$9246087$7$Tonic convulsion
+92460872$9246087$8$Tonic convulsion
+92460872$9246087$9$Tonic convulsion
+92460872$9246087$10$Tonic convulsion
+92460872$9246087$11$Tonic convulsion
+92460872$9246087$12$Tonic convulsion
+92460872$9246087$13$Tonic convulsion
+93217441$9321744$1$Pulmonary arterial hypertension
