@@ -213,6 +213,7 @@ def ingest_faers_dedup(
     table rather than adding to it.
     """
     _setup_django()
+    from signaldesk.analytics import faers as analytics
     from signaldesk.ingest.faers import quality
     from signaldesk.ingest.faers.dedup import persist, resolve_versions_across_quarters, stage2
     from signaldesk.ingest.faers.quarter import Quarter
@@ -228,7 +229,10 @@ def ingest_faers_dedup(
     # is where the deduplication numbers are measured, and an artifact assembled
     # anywhere else would be a transcription of them rather than a record.
     report = quality.build_report(
-        _results_from_manifest(start, end), stats, version_pairs=len(version_pairs)
+        _results_from_manifest(start, end),
+        stats,
+        version_pairs=len(version_pairs),
+        corpus=analytics.corpus_metrics(),
     )
     path = quality.write_report(report)
 
@@ -275,19 +279,35 @@ def ingest_faers_quality(
 ) -> None:
     """Recompute and print the quality report from what is loaded."""
     _setup_django()
+    from signaldesk.analytics import faers as analytics
     from signaldesk.ingest.faers import quality
-    from signaldesk.ingest.faers.dedup import resolve_versions_across_quarters, stage2
+    from signaldesk.ingest.faers.dedup import (
+        load_stats,
+        resolve_versions_across_quarters,
+        save_stats,
+        stage2,
+    )
     from signaldesk.ingest.faers.quarter import Quarter
 
     start = Quarter.parse(from_quarter) if from_quarter else None
     end = Quarter.parse(to_quarter) if to_quarter else None
 
     results = _results_from_manifest(start, end)
-    stats = stage2(start=start, end=end)
+    # Reuse the last pass rather than repeating an hour of comparison; only
+    # recompute when no pass has been recorded, and record it when we do.
+    stats = load_stats()
+    if stats is None:
+        stats = stage2(start=start, end=end)
+        save_stats(stats)
     report = quality.build_report(
-        results, stats, version_pairs=len(resolve_versions_across_quarters())
+        results,
+        stats,
+        version_pairs=len(resolve_versions_across_quarters()),
+        corpus=analytics.corpus_metrics(),
     )
+    path = quality.write_report(report)
     typer.echo(quality.render(report))
+    typer.echo(f"\nreport written to {path}")
 
 
 @ingest_app.command("labels")

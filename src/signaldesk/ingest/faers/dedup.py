@@ -54,18 +54,24 @@ to lower the bar until they match something.
 
 from __future__ import annotations
 
+import json
 import math
 from collections import defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from itertools import islice
+from pathlib import Path
 
 import duckdb
+from django.db import transaction
 
 from signaldesk.core.config import Settings, get_settings
 from signaldesk.core.db import connect
 from signaldesk.core.logging import get_logger
 from signaldesk.ingest.faers.load import parquet_root
 from signaldesk.ingest.faers.quarter import Quarter
+from signaldesk.web.signals.models import Duplicate
 
 log = get_logger(__name__)
 
@@ -83,6 +89,9 @@ BLOCK_INDEX_THRESHOLD = 50
 
 #: Rows pulled from the engine at a time while streaming blocks.
 FETCH_BATCH_ROWS = 50_000
+
+#: Duplicate rows inserted per batch. A full-corpus run writes millions.
+PERSIST_BATCH_ROWS = 10_000
 
 
 @dataclass(slots=True)
@@ -421,28 +430,21 @@ def _count_excluded(
     return int(result[0]) if result else 0
 
 
-def persist(stats: DedupStats, version_pairs: list[tuple[int, int]]) -> int:
-    """Replace the duplicate table with the results of one coherent run.
-
-    Truncate and rebuild rather than append: appending would accumulate the
-    findings of successive runs with different corpora and different code, and
-    there would be no way to tell afterwards which rows came from which.
-    """
-    from signaldesk.web.signals.models import Duplicate
-
-    Duplicate.objects.all().delete()
-    records = [
-        Duplicate(
+def _duplicate_rows(stats: DedupStats, version_pairs: list[tuple[int, int]]) -> Iterator[Duplicate]:
+    """Yield the rows one run produced, without materialising them all."""
+    for primaryid, canonical in version_pairs:
+        yield Duplicate(
             primaryid=primaryid,
             canonical_primaryid=canonical,
             method=METHOD_VERSION,
             score=1.0,
         )
-        for primaryid, canonical in version_pairs
-    ]
+
     superseded = {primaryid for primaryid, _ in version_pairs}
-    records.extend(
-        Duplicate(
+    for primaryid, canonical, drug_similarity, reaction_similarity, cross_quarter in stats.pairs:
+        if primaryid in superseded:
+            continue
+        yield Duplicate(
             primaryid=primaryid,
             canonical_primaryid=canonical,
             method=METHOD_PROBABILISTIC,
@@ -451,12 +453,85 @@ def persist(stats: DedupStats, version_pairs: list[tuple[int, int]]) -> int:
             reaction_jaccard=reaction_similarity,
             cross_quarter=cross_quarter,
         )
-        for primaryid, canonical, drug_similarity, reaction_similarity, cross_quarter in stats.pairs
-        if primaryid not in superseded
+
+
+def stats_path(settings: Settings | None = None) -> Path:
+    """Where the last deduplication run's measurements are kept."""
+    settings = settings or get_settings()
+    return settings.data_dir / "faers" / "dedup_stats.json"
+
+
+def save_stats(stats: DedupStats, settings: Settings | None = None) -> Path:
+    """Record what the pass measured, so a report can be rebuilt without it.
+
+    A full-corpus pass costs an hour. Without this, regenerating the quality
+    report means paying that again, which is how a report ends up being edited
+    by hand instead of produced by a run.
+    """
+    path = stats_path(settings)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "measured_at": datetime.now(tz=UTC).isoformat(),
+        "records_considered": stats.records_considered,
+        "records_excluded_null_key": stats.records_excluded_null_key,
+        "blocks": stats.blocks,
+        "largest_block": stats.largest_block,
+        "comparisons": stats.comparisons,
+        "naive_comparisons": stats.naive_comparisons,
+        "duplicate_pairs": stats.duplicate_pairs,
+        "cross_quarter_pairs": stats.cross_quarter_pairs,
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    log.info("faers.dedup.stats_saved", path=str(path))
+    return path
+
+
+def load_stats(settings: Settings | None = None) -> DedupStats | None:
+    """The last run's measurements, or None if no pass has been recorded."""
+    path = stats_path(settings)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        log.warning("faers.dedup.stats_unreadable", path=str(path))
+        return None
+    return DedupStats(
+        records_considered=int(payload["records_considered"]),
+        records_excluded_null_key=int(payload["records_excluded_null_key"]),
+        blocks=int(payload["blocks"]),
+        largest_block=int(payload["largest_block"]),
+        comparisons=int(payload["comparisons"]),
+        naive_comparisons=int(payload["naive_comparisons"]),
+        duplicate_pairs=int(payload["duplicate_pairs"]),
+        cross_quarter_pairs=int(payload["cross_quarter_pairs"]),
     )
-    Duplicate.objects.bulk_create(records, batch_size=10_000)
-    log.info("faers.dedup.persisted", rows=len(records))
-    return len(records)
+
+
+def persist(stats: DedupStats, version_pairs: list[tuple[int, int]]) -> int:
+    """Replace the duplicate table with the results of one coherent run.
+
+    Rebuild rather than append: appending would accumulate the findings of
+    successive runs over different corpora and different code, with no way to
+    tell afterwards which rows came from which.
+
+    Two properties this has to have, both learned by not having them. The whole
+    replacement is one transaction, so a failure leaves the previous results in
+    place instead of an empty table. And rows are streamed in batches rather
+    than built into one list: a full-corpus run produces about four and a half
+    million of them, and holding that many model instances at once exhausts the
+    process after an hour of work has already been done.
+    """
+    written = 0
+    with transaction.atomic():
+        Duplicate.objects.all().delete()
+        rows = _duplicate_rows(stats, version_pairs)
+        while batch := list(islice(rows, PERSIST_BATCH_ROWS)):
+            Duplicate.objects.bulk_create(batch, batch_size=PERSIST_BATCH_ROWS)
+            written += len(batch)
+    save_stats(stats)
+    log.info("faers.dedup.persisted", rows=written)
+    return written
 
 
 def resolve_versions_across_quarters(settings: Settings | None = None) -> list[tuple[int, int]]:

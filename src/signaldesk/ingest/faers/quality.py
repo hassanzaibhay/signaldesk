@@ -32,8 +32,15 @@ def build_report(
     dedup: DedupStats | None,
     *,
     version_pairs: int = 0,
+    corpus: dict[str, dict[str, int]] | None = None,
 ) -> dict[str, Any]:
-    """Assemble the report from what the run actually measured."""
+    """Assemble the report from what the run actually measured.
+
+    `corpus` carries figures counted from the stored Parquet rather than
+    accumulated during ingest. When present they take precedence, because they
+    describe the corpus as it exists rather than as one run happened to see it,
+    and they survive a report rebuilt long after the ingest.
+    """
     ingested = [result for result in results if not result.skipped]
 
     row_totals: dict[str, int] = {}
@@ -94,6 +101,19 @@ def build_report(
             },
         },
     }
+
+    if corpus is not None:
+        # Counted from the stored corpus, so they hold for a report rebuilt at
+        # any time rather than only for the process that did the ingest.
+        report["date_precision_event_dt"] = corpus["date_precision_event_dt"]
+        report["case_field_nulls"] = corpus["case_field_nulls"]
+        measured = corpus["prod_ai"]
+        report["prod_ai_coverage"] = {
+            "rows_with_value": measured["rows_with_value"],
+            "rows_total": measured["rows_total"],
+            "share": _rate(measured["rows_with_value"], measured["rows_total"]),
+            "note": report["prod_ai_coverage"]["note"],
+        }
 
     if dedup is not None:
         report["deduplication"].update(

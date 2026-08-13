@@ -110,6 +110,51 @@ def prod_ai_coverage(settings: Settings | None = None) -> pl.DataFrame:
     )
 
 
+def corpus_metrics(settings: Settings | None = None) -> dict[str, dict[str, int]]:
+    """Data quality measured from the stored corpus rather than from ingest.
+
+    Counting these here instead of accumulating them in memory during ingest
+    means the quality report describes what is actually on disk, can be
+    recomputed at any time, and can be checked by anyone with the Parquet files.
+    An in-memory counter describes one run and disappears with it.
+    """
+    cases = dataset_glob("case", settings)
+    drugs = dataset_glob("drug", settings)
+
+    precision = _read(
+        f"SELECT event_dt_precision AS value, count(*) AS n "
+        f"FROM read_parquet('{cases}', hive_partitioning := true) GROUP BY 1",
+        settings,
+    )
+    nulls = _read(
+        f"""
+        SELECT
+            count(*) FILTER (age_years IS NULL) AS age_missing,
+            count(*) FILTER (weight_kg IS NULL) AS weight_missing,
+            count(*) FILTER (sex IS NULL) AS sex_missing,
+            count(*) FILTER (country IS NULL) AS country_missing,
+            count(*) FILTER (country_source = 'reporter') AS country_from_reporter_fallback,
+            count(*) FILTER (event_dt IS NULL) AS event_dt_missing,
+            count(*) AS cases
+        FROM read_parquet('{cases}', hive_partitioning := true)
+        """,
+        settings,
+    )
+    coverage = _read(
+        f"SELECT count(*) AS rows_total, count(prod_ai) AS rows_with_value "
+        f"FROM read_parquet('{drugs}', hive_partitioning := true)",
+        settings,
+    )
+
+    return {
+        "date_precision_event_dt": {
+            str(value): int(count) for value, count in precision.iter_rows()
+        },
+        "case_field_nulls": {name: int(nulls.item(0, name)) for name in nulls.columns},
+        "prod_ai": {name: int(coverage.item(0, name)) for name in coverage.columns},
+    }
+
+
 def case_drug_reaction_pairs(settings: Settings | None = None) -> pl.DataFrame:
     """Distinct (case, drug, reaction) triples, the input to contingency tables.
 
