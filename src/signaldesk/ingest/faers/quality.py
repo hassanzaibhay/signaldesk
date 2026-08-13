@@ -1,0 +1,203 @@
+"""The ingest quality report.
+
+Written to `evals/history/` and committed, because a number that only ever
+existed in a terminal cannot be checked by anyone later. Every figure here is
+counted during the run rather than estimated afterwards.
+
+The duplicate rate is the headline, and it carries two qualifiers that must
+travel with it: it is measured against the corpus after the published rule has
+already removed superseded versions, and it excludes records too sparse to block.
+Reporting the rate without the exclusion share would overstate how much of the
+corpus was actually examined.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from signaldesk.core.logging import get_logger
+from signaldesk.ingest.faers.dedup import DedupStats
+from signaldesk.ingest.faers.pipeline import QuarterResult
+
+log = get_logger(__name__)
+
+HISTORY_DIR = Path("evals/history")
+
+
+def build_report(
+    results: list[QuarterResult],
+    dedup: DedupStats | None,
+    *,
+    version_pairs: int = 0,
+) -> dict[str, Any]:
+    """Assemble the report from what the run actually measured."""
+    ingested = [result for result in results if not result.skipped]
+
+    row_totals: dict[str, int] = {}
+    null_totals: dict[str, int] = {}
+    precision_totals: dict[str, int] = {}
+    for result in ingested:
+        for dataset, count in result.row_counts.items():
+            row_totals[dataset] = row_totals.get(dataset, 0) + count
+        for reason, count in result.null_counts.items():
+            null_totals[reason] = null_totals.get(reason, 0) + count
+        for precision, count in result.date_precision.items():
+            precision_totals[precision] = precision_totals.get(precision, 0) + count
+
+    cases = row_totals.get("case", 0)
+    stage1_versions = sum(result.stage1_removed_versions for result in ingested)
+    stage1_deleted = sum(result.stage1_removed_deleted for result in ingested)
+    prod_ai_present = sum(result.prod_ai_present for result in ingested)
+    prod_ai_total = sum(result.prod_ai_total for result in ingested)
+
+    report: dict[str, Any] = {
+        "generated_at": datetime.now(tz=UTC).isoformat(),
+        "quarters": {
+            "ingested": [result.quarter.label for result in ingested],
+            "skipped": [result.quarter.label for result in results if result.skipped],
+            "without_deleted_cases_file": [
+                result.quarter.label for result in ingested if not result.had_deleted_file
+            ],
+        },
+        "rows": {
+            "per_quarter": {result.quarter.label: result.row_counts for result in ingested},
+            "totals": row_totals,
+        },
+        "deduplication": {
+            "stage1_superseded_versions_within_quarter": stage1_versions,
+            "stage1_withdrawn_by_source": stage1_deleted,
+            "stage1_rate": _rate(
+                stage1_versions + stage1_deleted, cases + stage1_versions + stage1_deleted
+            ),
+            "stage1_superseded_versions_across_quarters": version_pairs,
+        },
+        "normalization_nulls": null_totals,
+        "date_precision_event_dt": precision_totals,
+        "prod_ai_coverage": {
+            "rows_with_value": prod_ai_present,
+            "rows_total": prod_ai_total,
+            "share": _rate(prod_ai_present, prod_ai_total),
+            "note": (
+                "The source only publishes prod_ai from 2014Q3 onward; earlier rows "
+                "are null by construction, not by data quality."
+            ),
+        },
+        "timing": {
+            "seconds_per_quarter": {
+                result.quarter.label: round(result.seconds, 1) for result in ingested
+            },
+            "bytes_downloaded_per_quarter": {
+                result.quarter.label: result.bytes_downloaded for result in ingested
+            },
+        },
+    }
+
+    if dedup is not None:
+        report["deduplication"].update(
+            {
+                "stage2_records_considered": dedup.records_considered,
+                "stage2_records_excluded_null_blocking_key": dedup.records_excluded_null_key,
+                "stage2_excluded_share": round(dedup.excluded_share, 6),
+                "stage2_blocks": dedup.blocks,
+                "stage2_largest_block": dedup.largest_block,
+                "stage2_comparisons": dedup.comparisons,
+                "stage2_comparisons_if_naive": dedup.naive_comparisons,
+                "stage2_duplicate_pairs": dedup.duplicate_pairs,
+                "stage2_cross_quarter_pairs": dedup.cross_quarter_pairs,
+                "stage2_cross_quarter_share": round(dedup.cross_quarter_share, 6),
+                "stage2_rate": _rate(dedup.duplicate_pairs, dedup.records_considered),
+                "interpretation": (
+                    "The stage 2 rate is a lower bound. Records missing sex, age or "
+                    "country are excluded from blocking entirely rather than matched "
+                    "on the remaining keys, because a null key is not evidence of "
+                    "similarity and relaxing it would manufacture false merges."
+                ),
+            }
+        )
+
+    return report
+
+
+def _rate(numerator: int, denominator: int) -> float:
+    return round(numerator / denominator, 6) if denominator else 0.0
+
+
+def write_report(report: dict[str, Any], directory: Path = HISTORY_DIR) -> Path:
+    """Write the report under a timestamped name and return the path."""
+    directory.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = directory / f"ingest_faers_{stamp}.json"
+    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    log.info("faers.quality.written", path=str(path))
+    return path
+
+
+def render(report: dict[str, Any]) -> str:
+    """A readable summary for the terminal."""
+    lines: list[str] = []
+    quarters = report["quarters"]["ingested"]
+    lines.append(
+        f"quarters ingested: {len(quarters)}"
+        + (f" ({quarters[0]} to {quarters[-1]})" if quarters else "")
+    )
+    missing = report["quarters"]["without_deleted_cases_file"]
+    if missing:
+        lines.append(
+            f"quarters shipping no deleted-cases file: {len(missing)} ({', '.join(missing)})"
+        )
+
+    lines.append("")
+    lines.append("rows written")
+    for dataset, count in sorted(report["rows"]["totals"].items()):
+        lines.append(f"  {dataset:<14} {count:>12,}")
+
+    dedup = report["deduplication"]
+    lines.append("")
+    lines.append("deduplication")
+    lines.append(
+        f"  stage 1 superseded within quarter  {dedup['stage1_superseded_versions_within_quarter']:>12,}"
+    )
+    lines.append(
+        f"  stage 1 superseded across quarters {dedup['stage1_superseded_versions_across_quarters']:>12,}"
+    )
+    lines.append(f"  stage 1 withdrawn by source        {dedup['stage1_withdrawn_by_source']:>12,}")
+    if "stage2_duplicate_pairs" in dedup:
+        lines.append(f"  stage 2 duplicate pairs            {dedup['stage2_duplicate_pairs']:>12,}")
+        lines.append(f"  stage 2 rate                       {dedup['stage2_rate']:>12.4%}")
+        lines.append(
+            f"  stage 2 cross-quarter share        {dedup['stage2_cross_quarter_share']:>12.4%}"
+        )
+        lines.append(
+            f"  excluded, null blocking key        {dedup['stage2_records_excluded_null_blocking_key']:>12,}"
+        )
+        lines.append(
+            f"  excluded share                     {dedup['stage2_excluded_share']:>12.4%}"
+        )
+        lines.append(f"  comparisons made                   {dedup['stage2_comparisons']:>12,}")
+        lines.append(
+            f"  comparisons if naive               {dedup['stage2_comparisons_if_naive']:>12,}"
+        )
+        lines.append(f"  largest block                      {dedup['stage2_largest_block']:>12,}")
+
+    coverage = report["prod_ai_coverage"]
+    lines.append("")
+    lines.append(
+        f"prod_ai coverage: {coverage['share']:.2%} of {coverage['rows_total']:,} drug rows"
+    )
+
+    lines.append("")
+    lines.append("event date precision")
+    for precision, count in sorted(report["date_precision_event_dt"].items()):
+        lines.append(f"  {precision:<10} {count:>12,}")
+
+    nulls = report["normalization_nulls"]
+    if nulls:
+        lines.append("")
+        lines.append("values nulled during normalization")
+        for reason, count in sorted(nulls.items()):
+            lines.append(f"  {reason:<36} {count:>12,}")
+
+    return "\n".join(lines)
