@@ -332,6 +332,7 @@ def stage2(
     stats = DedupStats()
     root = parquet_root(settings)
     seen: dict[int, tuple[int, float, float, bool]] = {}
+    best: dict[int, tuple[str, int]] = {}
 
     with connect(settings) as handle:
         counts = stage_population(handle, root, start=start, end=end)
@@ -341,7 +342,7 @@ def stage2(
         for members in _blocks(handle):
             stats.blocks += 1
             streamed += len(members)
-            _compare_block(members, stats, seen)
+            _compare_block(members, stats, seen, best)
 
     # The denominator is counted in SQL and the comparison reads the same table.
     # If those two disagree the rate is computed over a population that was not
@@ -377,8 +378,17 @@ def _compare_block(
     members: list[BlockRecord],
     stats: DedupStats,
     seen: dict[int, tuple[int, float, float, bool]],
+    best: dict[int, tuple[str, int]],
 ) -> None:
-    """Score one block, recording the duplicates it contains."""
+    """Score one block, recording the duplicates it contains.
+
+    `best` holds the survivor key already recorded for each flagged record, so a
+    record matching several others keeps the strongest of them rather than
+    whichever comparison ran last. Without it the canonical was decided by
+    scoring order: the same arbitrary-choice defect as the tie-break, one level
+    up, and it produced chains through the middle of a block instead of pointing
+    every member at the record that actually survives it.
+    """
     size = len(members)
     stats.largest_block = max(stats.largest_block, size)
     stats.naive_comparisons += size * (size - 1) // 2
@@ -417,6 +427,11 @@ def _compare_block(
         stats.duplicate_pairs += 1
         if cross_quarter:
             stats.cross_quarter_pairs += 1
+        key = survivor_key(survivor)
+        recorded = best.get(superseded.primaryid)
+        if recorded is not None and key <= recorded:
+            continue
+        best[superseded.primaryid] = key
         seen[superseded.primaryid] = (
             survivor.primaryid,
             drug_similarity,

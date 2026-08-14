@@ -376,3 +376,87 @@ def test_the_discard_counter_survives_a_round_trip(loaded: Settings) -> None:
     assert reloaded is not None
     assert reloaded.probabilistic_discarded_superseded == 0
     assert reloaded.records_excluded_superseded == stats.records_excluded_superseded
+
+
+@pytest.fixture
+def tied(tmp_path: Path, settings: Settings) -> Settings:
+    """Four mutually-matching cases sharing one `fda_dt`, in one block.
+
+    Ties are the condition the old comparison could not decide: `>=` held in both
+    directions, so the survivor fell out of whichever side of the call a record
+    landed on. Two of these -- 100011 and 200011 -- would sort differently under
+    that comparison depending on the order the block reader happened to yield
+    them in.
+    """
+    scoped = settings.model_copy(update={"data_dir": tmp_path / "tied"})
+    shared: dict[str, object] = {"sex": "F", "country": "US", "age_years": 51.0}
+    identifiers = (100011, 200011, 300011, 400011)
+    _write_case(
+        scoped,
+        "2013Q1",
+        [
+            {
+                "primaryid": primaryid,
+                "caseid": primaryid // 10,
+                "caseversion": 1,
+                "fda_dt": "2013-03-04",
+            }
+            | shared
+            for primaryid in identifiers
+        ],
+    )
+    write_parquet(
+        pl.DataFrame(
+            [
+                {"primaryid": primaryid, "drug_seq": 1, "role_cod": "PS", "drugname_raw": drug}
+                for primaryid in identifiers
+                for drug in ("ASPIRIN", "WARFARIN")
+            ]
+        ),
+        DRUG_TARGET,
+        Quarter.parse("2013Q1"),
+        scoped,
+    )
+    write_parquet(
+        pl.DataFrame(
+            [
+                {"primaryid": primaryid, "pt": pt}
+                for primaryid in identifiers
+                for pt in ("NAUSEA", "HEADACHE")
+            ]
+        ),
+        REACTION_TARGET,
+        Quarter.parse("2013Q1"),
+        scoped,
+    )
+    return scoped
+
+
+def test_two_passes_over_tied_records_write_the_same_flags(tied: Settings) -> None:
+    """Defect 5, verified by running it rather than by reading it.
+
+    Replaying P02's stage 2 showed that reading the code was not enough: it
+    reproduced every pass-level figure exactly and still wrote a different flag
+    set, because the tie-break was decided by argument position. So the fix is
+    checked the same way, on records built to tie.
+    """
+    first = sorted(stage2(tied).pairs)
+    second = sorted(stage2(tied).pairs)
+
+    assert first == second, "two passes over the same corpus disagreed"
+    # Not merely the same size: the same records, canonicals and scores.
+    assert [pair[0] for pair in first] == [pair[0] for pair in second]
+    assert [pair[1] for pair in first] == [pair[1] for pair in second]
+
+
+def test_the_highest_identifier_survives_a_tie(tied: Settings) -> None:
+    """With one date across the block, the total order decides, and it is stable.
+
+    Every record but the last is flagged, and each canonical is the strongest
+    survivor rather than whichever comparison happened to run last.
+    """
+    stats = stage2(tied)
+    flagged = {primaryid: canonical for primaryid, canonical, *_ in stats.pairs}
+
+    assert set(flagged) == {100011, 200011, 300011}
+    assert set(flagged.values()) == {400011}

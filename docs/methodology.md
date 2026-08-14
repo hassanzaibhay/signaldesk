@@ -217,6 +217,35 @@ what that changed is recorded under "What the defect fixes moved" further down, 
 the current artifact is `evals/history/ingest_faers_20260814T142156Z.json`. The P02
 table is kept because the delta is reported against it.
 
+**Every P02 figure derived from the stage 2 flag set is one sample, not a
+measurement.** This is stronger than provisional and it is established rather than
+suspected. Replaying P02's stage 2 from commit `7b7d499` against the same corpus
+reproduces every pass-level figure exactly - 11,544,512 considered, 705,158,714
+comparisons scored against 221,525,158,953 naive, 19,984 blocks, largest 109,667 -
+and then writes a **different flag set**: 1,653,867 stage 2 flags where the table
+holds 1,653,845, and 97,930 with a stage-1-superseded canonical where the audit
+found 98,376.
+
+The cause is the tie-break. `left.fda_dt >= right.fda_dt` holds in both directions
+on equal dates, so which record of a tied pair was flagged fell out of the order
+the comparison happened to reach them in. The comparison set is deterministic; the
+survivor selection was not.
+
+So these carry that status: **14.32 percent, 21.94 percent, the 98,376 flags
+naming a superseded canonical, the 17 closed components, the 57 records and the 38
+case identifiers that survived nowhere.** They remain the right thing to report as
+what the P02 pass produced, and the delta below is correctly computed against them,
+but re-running that code would not produce them again. It also retires the question
+of why the P02 baselines cannot simply be regenerated.
+
+**Stage 1 is not affected.** Version supersession is deterministic SQL, and the
+replay returned 2,851,499 superseded records, exactly the figure the table holds.
+13.89 percent is reproducible.
+
+P03's pass is checked for the same property directly rather than assumed to have
+it: two passes over a fixture built with `fda_dt` ties write identical flag sets,
+canonicals included.
+
 | Rate | Measured | Population | Status |
 |---|---|---|---|
 | Stage 1 supersession | 2,851,499 / 20,535,213 = **13.89%** | every case | Settled |
