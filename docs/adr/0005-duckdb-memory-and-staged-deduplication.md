@@ -135,10 +135,11 @@ survivors, which removes both problems and moves the rate. The pre-run and
 post-run stage 2 rates are therefore not comparable for this reason as well as
 for the stratum redefinition.
 
-### Defects carried into the re-run
+### Defects carried into the re-run - all six closed in P03
 
 Found while reconciling the published figures, all in the deduplication pass, all
-fixed as part of the re-run rather than in the reporting pass that found them:
+fixed in P03 rather than in the reporting pass that found them. What each one was
+and how it was closed:
 
 1. Stage 2's population is restricted to stage 1 survivors, as above. This is the
    change that moves the rate.
@@ -163,6 +164,79 @@ fixed as part of the re-run rather than in the reporting pass that found them:
 6. The quality report computes the surviving-record count by subtracting a
    Postgres flag count from the Parquet case total, mixing the two stores across
    a 707-row gap that ADR 0004 records. Both terms come from Postgres.
+
+Closed as follows. Item 1: `stage_population` classifies every case and stages
+only stage 1 survivors. Item 2: that same function builds the population for the
+pass and for the report, so there is no second query to disagree with the first.
+Item 3: `probabilistic_discarded_superseded`, saved and reloaded with the rest of
+the run's statistics. Item 4: asserted on both sides of every written pair, over
+a corpus built to contain the case, since the published fixture has no case
+published at two versions in different quarters and therefore cannot exercise it.
+Item 5: `choose_survivor`, ordering on `(fda_dt, primaryid)`, tested with the
+arguments both ways round. Item 6: staging collapses to one row per case, so the
+population stops counting the 707 republications, and every rate divides Postgres
+by Postgres and names the store.
+
+### What the population is, and why three classes leave it
+
+The stage 2 rate is reported against the cases the rule can apply to: stage 1
+survivors that carry a complete blocking key and a non-empty drug set. Three
+classes are excluded, and all three for one reason - **they cannot reach the
+numerator, so leaving them in the denominator reports a rate against a population
+the rule was never applied to.**
+
+- **Superseded by stage 1.** The published rule already withdrew them.
+- **Null blocking key.** They cannot be blocked, and a null key is not evidence
+  of similarity.
+- **Empty drug set.** `jaccard` scores an empty set as dissimilar, so such a case
+  can never match. Note the rationale: this is denominator consistency, not
+  comparison safety. The comparison already does the right thing.
+
+A case alone in its block is **not** excluded. The rule applied to it and found
+nothing, which is a legitimate zero, so it stays in the denominator and is
+counted separately. That count is what made the pass and the store disagree by
+4,646 in P02, and it is now a named term rather than a gap.
+
+Empty drug sets are rare today - 2 cases in 20,534,506, both inside the blockable
+population, against 55 with no reaction term - but the count grows once
+`not_a_drug` overrides start removing members, which is why the handling is in
+place before it is needed.
+
+### Sparse has three paths, not one
+
+The sparse stratum is defined on ingredient-set cardinality, and after
+normalization a record can arrive at cardinality one by three different routes.
+They are counted separately, or the sparse delta absorbs them and is read as a
+normalization effect:
+
+- **sparse-normalized** - one resolved ingredient.
+- **sparse-fallback** - one member, and it is a cleaned raw string that failed to
+  normalize. Matching on it is exact string equality, the degenerate case the D2
+  audit exists to bound.
+- **sparse-by-exclusion** - two members became one because the other was ruled
+  `not_a_drug`.
+
+A fallback member counts toward cardinality, because the set the matcher compares
+and the set the stratum is computed on must be the same object. A `not_a_drug`
+member does not fall back: a non-drug string as a set member manufactures overlap
+between unrelated cases.
+
+### The delta has three components and they are not additive
+
+Reporting a naive before-and-after would credit normalization with changes it did
+not cause. Three components:
+
+1. **Defect fixes** - the P02 baseline against a pass with all six defects fixed,
+   still comparing raw drug name strings.
+2. **Stratum redefinition** - that same population relabelled under
+   ingredient-set cardinality. A relabelling, not a matching run.
+3. **Normalization** - the intermediate pass against the ingredient-set pass.
+
+Components 1 and 3 move the duplicate count and sum to the total delta. Component
+2 moves no count at all; it changes which stratum a record belongs to and bears
+on stratum-level attribution only. Anyone trying to reconcile three numbers
+against one total will fail, which is why the report says this wherever the three
+appear.
 
 ### Seventeen components of the flag graph have no survivor
 
