@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import polars as pl
 import pytest
 
 from signaldesk.analytics import faers as analytics
@@ -17,10 +18,14 @@ from signaldesk.core.config import Settings
 from signaldesk.ingest.faers import manifest
 from signaldesk.ingest.faers.dedup import (
     METHOD_PROBABILISTIC,
+    chain_report,
+    load_stats,
     persist,
     resolve_versions_across_quarters,
     stage2,
+    stats_from_store,
 )
+from signaldesk.ingest.faers.load import CASE_TARGET, DRUG_TARGET, REACTION_TARGET, write_parquet
 from signaldesk.ingest.faers.pipeline import QuarterResult, process_extracted
 from signaldesk.ingest.faers.quarter import Quarter
 from signaldesk.web.signals.models import Duplicate, IngestManifest
@@ -188,3 +193,186 @@ def test_a_failed_unit_is_retried(loaded: Settings) -> None:
     assert decision.should_ingest is True
     assert "failed" in decision.reason
     assert IngestManifest.objects.get(unit="2013Q2").error == "boom"
+
+
+def _write_case(scoped: Settings, label: str, rows: list[dict[str, object]]) -> None:
+    quarter = Quarter.parse(label)
+    frame = pl.DataFrame(rows).with_columns(
+        pl.col("fda_dt").str.to_date(), pl.lit(label).alias("quarter")
+    )
+    write_parquet(frame, CASE_TARGET, quarter, scoped)
+
+
+@pytest.fixture
+def constructed(tmp_path: Path, settings: Settings) -> Settings:
+    """A hand-built corpus carrying the cases the published fixture lacks.
+
+    The fixture slice has no case published at two versions in different
+    quarters, so it cannot exercise the population rule at all. These four cases
+    do: one superseded across quarters, its surviving version, a separate case
+    that matches both of them, and a case with no drug rows. All four share one
+    block, so nothing here depends on blocking behaviour.
+    """
+    scoped = settings.model_copy(update={"data_dir": tmp_path / "constructed"})
+    shared: dict[str, object] = {"sex": "F", "country": "US", "age_years": 40.0}
+    _write_case(
+        scoped,
+        "2013Q1",
+        [
+            {"primaryid": 100011, "caseid": 10001, "caseversion": 1, "fda_dt": "2013-01-05"}
+            | shared,
+            {"primaryid": 200011, "caseid": 20001, "caseversion": 1, "fda_dt": "2013-01-05"}
+            | shared,
+            {"primaryid": 300011, "caseid": 30001, "caseversion": 1, "fda_dt": "2013-01-05"}
+            | shared,
+        ],
+    )
+    _write_case(
+        scoped,
+        "2013Q2",
+        [{"primaryid": 100012, "caseid": 10001, "caseversion": 2, "fda_dt": "2013-04-05"} | shared],
+    )
+
+    drugs = [
+        {"primaryid": primaryid, "drug_seq": 1, "role_cod": "PS", "drugname_raw": "ASPIRIN"}
+        for primaryid in (100011, 200011)
+    ]
+    write_parquet(pl.DataFrame(drugs), DRUG_TARGET, Quarter.parse("2013Q1"), scoped)
+    write_parquet(
+        pl.DataFrame(
+            [{"primaryid": 100012, "drug_seq": 1, "role_cod": "PS", "drugname_raw": "ASPIRIN"}]
+        ),
+        DRUG_TARGET,
+        Quarter.parse("2013Q2"),
+        scoped,
+    )
+
+    reactions = [
+        {"primaryid": primaryid, "pt": pt}
+        for primaryid in (100011, 200011, 300011)
+        for pt in ("NAUSEA", "HEADACHE")
+    ]
+    write_parquet(pl.DataFrame(reactions), REACTION_TARGET, Quarter.parse("2013Q1"), scoped)
+    write_parquet(
+        pl.DataFrame([{"primaryid": 100012, "pt": pt} for pt in ("NAUSEA", "HEADACHE")]),
+        REACTION_TARGET,
+        Quarter.parse("2013Q2"),
+        scoped,
+    )
+    return scoped
+
+
+def test_stage2_excludes_records_stage_1_already_superseded(constructed: Settings) -> None:
+    """Defect 1. A superseded record cannot reach the numerator, so it is out.
+
+    Left in, it sits in the denominator alone, which is the inconsistency the
+    P02 report documented rather than fixed: 1,663,031 cases in a denominator
+    they could never contribute to.
+    """
+    stats = stage2(constructed)
+    superseded = {primaryid for primaryid, _ in resolve_versions_across_quarters(constructed)}
+
+    assert superseded == {100011}
+    assert stats.records_excluded_superseded == 1
+    assert stats.records_excluded_empty_drug_set == 1
+    # The surviving version and the case that matches it, and nothing else.
+    assert stats.records_considered == 2
+    assert stats.population == 2
+    assert stats.records_evaluated == 4
+
+    flagged = {primaryid for primaryid, *_ in stats.pairs}
+    canonicals = {pair[1] for pair in stats.pairs}
+    assert flagged == {200011}
+    assert canonicals == {100012}
+    assert flagged.isdisjoint(superseded)
+    # Defect 4: the partner side is clean too, not only the flagged side.
+    assert canonicals.isdisjoint(superseded)
+
+
+def test_no_probabilistic_match_names_a_superseded_partner(loaded: Settings) -> None:
+    """Defect 4, verified rather than assumed.
+
+    The write-time skip was one-sided: it dropped a match when the flagged record
+    was superseded, not when its partner was, leaving 98,376 flags naming a
+    canonical stage 1 had removed. Restricting the population is supposed to make
+    the case unreachable from either side. This asserts it, on both sides.
+    """
+    stats = stage2(loaded)
+    version_pairs = resolve_versions_across_quarters(loaded)
+    persist(stats, version_pairs, loaded)
+    superseded = {primaryid for primaryid, _ in version_pairs}
+
+    rows = Duplicate.objects.filter(method=METHOD_PROBABILISTIC).values_list(
+        "primaryid", "canonical_primaryid"
+    )
+    for primaryid, canonical in rows:
+        assert primaryid not in superseded
+        assert canonical not in superseded
+
+    assert stats.probabilistic_discarded_superseded == 0
+
+
+def test_a_case_with_no_drug_string_is_excluded_rather_than_compared(loaded: Settings) -> None:
+    """An empty drug set scores as dissimilar, so it can never match.
+
+    Reported as an exclusion for the same reason as the other two: a record that
+    cannot reach the numerator does not belong in the denominator. The count is
+    the point, not its size.
+    """
+    stats = stage2(loaded)
+
+    assert stats.records_excluded_empty_drug_set >= 0
+    assert stats.population == stats.records_considered + (
+        stats.records_excluded_single_member_block
+    )
+    assert stats.records_evaluated == stats.population + (
+        stats.records_excluded_null_key
+        + stats.records_excluded_superseded
+        + stats.records_excluded_empty_drug_set
+    )
+
+
+def test_the_pass_and_the_store_agree_on_the_population(loaded: Settings) -> None:
+    """Defect 2. The report's denominator is the one the pass compared.
+
+    In P02 these were two queries meaning to say the same thing, and they
+    differed by 4,646 because only one applied the single-member-block filter.
+    They are now one function, so this asserts that they stay one.
+    """
+    stats = stage2(loaded)
+    persist(stats, resolve_versions_across_quarters(loaded), loaded)
+
+    rebuilt = stats_from_store(loaded)
+
+    assert rebuilt.population == stats.population
+    assert rebuilt.records_considered == stats.records_considered
+    assert rebuilt.records_excluded_null_key == stats.records_excluded_null_key
+    assert rebuilt.records_excluded_superseded == stats.records_excluded_superseded
+    assert rebuilt.records_excluded_single_member_block == (
+        stats.records_excluded_single_member_block
+    )
+
+
+def test_the_written_table_has_no_chain_without_a_survivor(loaded: Settings) -> None:
+    """The gate. Every flagged record must resolve to a record nothing flagged."""
+    stats = stage2(loaded)
+    persist(stats, resolve_versions_across_quarters(loaded), loaded)
+
+    report = chain_report()
+
+    assert report.closed_components == 0
+    assert report.cycles == 0
+    assert report.is_sound
+    assert report.resolved_to_unflagged == report.flagged
+
+
+def test_the_discard_counter_survives_a_round_trip(loaded: Settings) -> None:
+    """Defect 3. The quantity is recoverable from stored state, not re-derived."""
+    stats = stage2(loaded)
+    persist(stats, resolve_versions_across_quarters(loaded), loaded)
+
+    reloaded = load_stats(loaded)
+
+    assert reloaded is not None
+    assert reloaded.probabilistic_discarded_superseded == 0
+    assert reloaded.records_excluded_superseded == stats.records_excluded_superseded

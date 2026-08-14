@@ -73,7 +73,7 @@ def test_dedup_section_carries_the_exclusion_and_its_interpretation() -> None:
         duplicate_pairs=50,
         cross_quarter_pairs=35,
     )
-    report = build_report([_result("2013Q1")], stats, version_pairs=9)
+    report = build_report([_result("2013Q1")], stats, version_pairs=9, postgres_cases=1000)
     dedup = report["deduplication"]
 
     assert dedup["stage2_records_excluded_null_blocking_key"] == 400
@@ -95,7 +95,7 @@ def test_duplicate_rate_is_per_record_not_per_pair() -> None:
     stats = DedupStats(records_considered=1000, duplicate_pairs=2500)
     stats.pairs = [(i, i + 1, 1.0, 1.0, False) for i in range(200)]
 
-    report = build_report([_result("2013Q1")], stats)
+    report = build_report([_result("2013Q1")], stats, postgres_cases=1000)
     dedup = report["deduplication"]
 
     assert dedup["stage2_duplicate_records"] == 200
@@ -129,25 +129,26 @@ def test_each_rate_is_computed_against_its_own_population() -> None:
         "prod_ai": {"rows_total": 10, "rows_with_value": 9},
     }
 
-    rates = build_report([_result("2013Q1")], stats, corpus=corpus)["rates"]
+    rates = build_report([_result("2013Q1")], stats, corpus=corpus, postgres_cases=1000)["rates"]
 
     # Version supersession is checked on every case.
     assert rates["stage1_superseded_of_all_cases"]["denominator"] == 1000
     assert rates["stage1_superseded_of_all_cases"]["rate"] == pytest.approx(90 / 1000)
 
     # Probabilistic matching only sees cases that could be blocked.
-    assert rates["stage2_matched_of_blockable_cases"]["denominator"] == 600
-    assert rates["stage2_matched_of_blockable_cases"]["rate"] == pytest.approx(60 / 600)
+    assert rates["stage2_matched_of_eligible_cases"]["denominator"] == 600
+    assert rates["stage2_matched_of_eligible_cases"]["rate"] == pytest.approx(60 / 600)
 
     # The overall rate is against the corpus, not the blockable subset.
     assert rates["overall_duplicate_of_all_cases"]["denominator"] == 1000
     assert rates["overall_duplicate_of_all_cases"]["rate"] == pytest.approx(150 / 1000)
 
-    assert rates["unique_cases"] == 1000 - 150
+    assert rates["unique_cases"]["count"] == 1000 - 150
+    assert rates["unique_cases"]["store"] == "postgres"
     # Every rate is a share of its own population, so none can exceed one.
     for key in (
         "stage1_superseded_of_all_cases",
-        "stage2_matched_of_blockable_cases",
+        "stage2_matched_of_eligible_cases",
         "overall_duplicate_of_all_cases",
     ):
         assert 0.0 <= rates[key]["rate"] <= 1.0
@@ -182,7 +183,7 @@ def test_rendered_report_states_the_headline_numbers() -> None:
         comparisons=1000,
         naive_comparisons=180_000,
     )
-    text = render(build_report([_result("2013Q1")], stats))
+    text = render(build_report([_result("2013Q1")], stats, postgres_cases=1000))
     assert "quarters ingested: 1" in text
     assert "stage 2 duplicate pairs" in text
     assert "excluded, null blocking key" in text
