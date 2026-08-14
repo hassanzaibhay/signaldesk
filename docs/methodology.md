@@ -214,7 +214,7 @@ only attempted on cases with a complete blocking key, a strict subset.
 The figures below are the P02 pass, and they are **superseded**. P03 closed the six
 defects ADR 0005 carried forward and re-ran stage 2 over the corrected population;
 what that changed is recorded under "What the defect fixes moved" further down, and
-the current artifact is `evals/history/ingest_faers_20260814T081121Z.json`. The P02
+the current artifact is `evals/history/ingest_faers_20260814T142156Z.json`. The P02
 table is kept because the delta is reported against it.
 
 | Rate | Measured | Population | Status |
@@ -222,6 +222,10 @@ table is kept because the delta is reported against it.
 | Stage 1 supersession | 2,851,499 / 20,535,213 = **13.89%** | every case | Settled |
 | Stage 2 match | 1,653,845 / 11,549,158 = **14.32%** | cases with a complete blocking key | Superseded by P03 |
 | Overall duplicate | 4,505,344 / 20,535,213 = **21.94%** | every case | Superseded by P03 |
+
+The three paragraphs that follow describe the P02 pass and are kept because the
+delta is reported against it. For what the corrected pass measures, skip to "What
+the defect fixes moved".
 
 **Which denominator the stage 2 rate uses.** 14.32 percent is computed against
 11,549,158, every case with a complete blocking key. That is the population the
@@ -233,48 +237,51 @@ below that qualify the rate - the superseded share and the 16.74 percent - are
 computed on the pass's 11,544,512, because they describe what the pass did rather
 than what the rule covers.
 
-**16,029,162 records remain once everything flagged is removed**, and that is a
-record count, not a count of surviving events. Both terms come from Postgres:
-20,534,506 distinct case identifiers less the 4,505,344 records the duplicate
-table flags. The committed report artifact prints 16,029,869 instead, because it
-subtracts the same Postgres flag count from the Parquet case total of
-20,535,213. Parquet holds one row per publication and Postgres one per case, a
-707-row gap recorded in ADR 0004, so the two cannot appear in one subtraction.
-Both terms come from Postgres once the report generator is changed with the rest
-of the deduplication fixes; the change is recorded in ADR 0005, and until it
-lands the figure to quote is the one stated here rather than the one in the
-artifact.
+Under P02 this paragraph carried a surviving-record count of 16,029,162 and an
+instruction to quote it rather than the committed artifact, because the artifact
+divided a Postgres flag count by a Parquet publication total. **Defect 6 is
+closed, so that instruction is withdrawn and the artifact is authoritative
+again.** The current figure is **16,054,992 surviving records**, both terms from
+Postgres, in `evals/history/ingest_faers_20260814T142156Z.json`. Every rate in
+that file names its store, and the Parquet total appears beside it for
+reconciliation rather than inside a subtraction.
 
-The count is also provisional, because stage 2 is. Stage 1 at 13.89 percent is
+The count is still provisional, because stage 2 is. Stage 1 at 13.89 percent is
 the only settled rate here, and there is no duplicate rate for this corpus that
 can be quoted on its own yet. One becomes reportable when the audit bounds the
 stage 2 false-positive rate.
 
-**38 case identifiers survive nowhere, which is a defect and not a property of
-the method.** Subtracting the flagged records treats every one of them as having
-a surviving representative elsewhere in the corpus. Resolving the canonical
-pointers shows 17 components in which every member is flagged and no pointer
-reaches an unflagged record: 57 records, 38 distinct case identifiers, removed
-outright rather than merged into a survivor. That is 57 records in 16,029,162,
-about 3.6 in a million, and the size is not the point - the events are absent
-from the corpus, and no rate computed here says so. The cause is a survivor
-tie-break that is not a total order, recorded in ADR 0005 and fixed in the
-re-run, which verifies afterwards that no such component remains.
+**38 case identifiers survived nowhere under P02, which was a defect and not a
+property of the method.** Subtracting the flagged records treats every one of them
+as having a surviving representative elsewhere in the corpus. Resolving the
+canonical pointers showed 17 components in which every member was flagged and no
+pointer reached an unflagged record: 57 records, 38 distinct case identifiers,
+removed outright rather than merged into a survivor. That was 57 records in
+16,029,162, about 3.6 in a million, and the size was not the point - the events
+were absent from the corpus, and no rate computed there said so. The cause was a
+survivor tie-break that is not a total order. **P03 closed it, and the corrected
+pass resolves all 4,479,514 pointers with zero closed components and zero cycles.**
 
-**Why the stage 2 rate is a lower bound.** Two mechanisms hold it down, and
-neither is a property of the data:
+**Why the stage 2 rate is a lower bound.** Under P02 two mechanisms held it down,
+neither a property of the data:
 
-- 8,986,055 cases, 43.76 percent of the corpus, are excluded from stage 2
+- 8,986,055 cases, 43.76 percent of the corpus, were excluded from stage 2
   entirely because sex, age or country is missing and they cannot be blocked.
 - 1,663,031 cases, 14.41 percent of the stage 2 denominator, were already
-  superseded by stage 1. They sit in the denominator but cannot reach the
+  superseded by stage 1. They sat in the denominator but could not reach the
   numerator, because a match on a record that stage 1 already resolved is
   discarded when the results are written. Excluding them would put the rate at
   16.74 percent rather than 14.33.
 
-A third, smaller effect is the 4,646 single-member blocks noted above: they
-carry a complete key, so they are in the published denominator, but nothing was
+A third, smaller effect was the 4,646 single-member blocks noted above: they
+carry a complete key, so they were in the published denominator, but nothing was
 ever compared against them.
+
+The corrected pass removes the second mechanism entirely - superseded cases leave
+the population - and keeps the other two visible as named counts rather than as
+qualifiers in prose: 7,797,472 excluded for a null key, and 4,906 alone in their
+block and still inside the denominator. The rate remains a lower bound for the
+null-key reason alone.
 
 **On the arithmetic.** The three counts add exactly: 2,851,499 + 1,653,845 =
 4,505,344. That is not because the populations are disjoint, since both stages
