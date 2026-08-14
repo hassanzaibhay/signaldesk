@@ -136,14 +136,28 @@ class DedupStats:
 
     @property
     def duplicate_records(self) -> int:
-        """Records judged to duplicate another one.
+        """Records flagged by either rule.
 
         Not the same as `duplicate_pairs`, and the difference is large: one
         record can pair with many others, so pairs run to tens of millions while
         the records they implicate run to a few million. A rate computed from
         pairs exceeds 100 percent and means nothing. Rates use this.
+
+        Set by whatever wrote the duplicate table, so it means the same thing on
+        both paths. It used to fall back to `len(self.pairs)`, which counts only
+        the probabilistic side, so a report built from a measured pass divided by
+        a total that excluded every stage 1 flag: the first P03 artifact printed a
+        stage 2 numerator of zero and a surviving count 2.85 million too high.
+        There is no fallback now - an unset count raises rather than reporting a
+        number that means something else.
         """
-        return self.records_flagged if self.records_flagged is not None else len(self.pairs)
+        if self.records_flagged is None:
+            message = (
+                "flag counts were never recorded on these statistics, so no rate "
+                "can be computed from them"
+            )
+            raise IngestError(message)
+        return self.records_flagged
 
     @property
     def cross_quarter_share(self) -> float:
@@ -759,6 +773,12 @@ def save_stats(stats: DedupStats, settings: Settings | None = None) -> Path:
         "records_excluded_empty_drug_set": stats.records_excluded_empty_drug_set,
         "records_excluded_single_member_block": stats.records_excluded_single_member_block,
         "probabilistic_discarded_superseded": stats.probabilistic_discarded_superseded,
+        # Carried so a report rebuilt from this file divides by the same counts
+        # the pass wrote, rather than falling back to something that counts one
+        # rule and calls it the total.
+        "records_flagged": stats.records_flagged,
+        "records_flagged_version": stats.records_flagged_version,
+        "records_flagged_probabilistic": stats.records_flagged_probabilistic,
         "blocks": stats.blocks,
         "largest_block": stats.largest_block,
         "comparisons": stats.comparisons,
@@ -782,7 +802,15 @@ def load_stats(settings: Settings | None = None) -> DedupStats | None:
         log.warning("faers.dedup.stats_unreadable", path=str(path))
         return None
     discarded = payload.get("probabilistic_discarded_superseded")
+    flagged = payload.get("records_flagged")
+    flagged_version = payload.get("records_flagged_version")
+    flagged_probabilistic = payload.get("records_flagged_probabilistic")
     return DedupStats(
+        records_flagged=None if flagged is None else int(flagged),
+        records_flagged_version=None if flagged_version is None else int(flagged_version),
+        records_flagged_probabilistic=(
+            None if flagged_probabilistic is None else int(flagged_probabilistic)
+        ),
         records_considered=int(payload["records_considered"]),
         records_excluded_null_key=int(payload["records_excluded_null_key"]),
         # Defaulted rather than required: a stats file written by the previous
@@ -831,6 +859,14 @@ def persist(
         while batch := list(islice(rows, PERSIST_BATCH_ROWS)):
             Duplicate.objects.bulk_create(batch, batch_size=PERSIST_BATCH_ROWS)
             written += len(batch)
+
+    # The flag counts are recorded by whatever wrote the table, which is here.
+    # Every rate downstream divides by them, and a pass that leaves them unset
+    # produces a report whose numerator counts one rule and whose total counts
+    # neither.
+    stats.records_flagged_version = len(version_pairs)
+    stats.records_flagged_probabilistic = written - len(version_pairs)
+    stats.records_flagged = written
     save_stats(stats, settings)
     log.info("faers.dedup.persisted", rows=written)
     return written

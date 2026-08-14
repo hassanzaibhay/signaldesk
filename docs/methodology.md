@@ -211,11 +211,17 @@ The two stages have different denominators, and sharing one overstates the
 result. Version supersession is checked on every case. Probabilistic matching is
 only attempted on cases with a complete blocking key, a strict subset.
 
+The figures below are the P02 pass, and they are **superseded**. P03 closed the six
+defects ADR 0005 carried forward and re-ran stage 2 over the corrected population;
+what that changed is recorded under "What the defect fixes moved" further down, and
+the current artifact is `evals/history/ingest_faers_20260814T081121Z.json`. The P02
+table is kept because the delta is reported against it.
+
 | Rate | Measured | Population | Status |
 |---|---|---|---|
 | Stage 1 supersession | 2,851,499 / 20,535,213 = **13.89%** | every case | Settled |
-| Stage 2 match | 1,653,845 / 11,549,158 = **14.32%** | cases with a complete blocking key | Provisional |
-| Overall duplicate | 4,505,344 / 20,535,213 = **21.94%** | every case | Provisional |
+| Stage 2 match | 1,653,845 / 11,549,158 = **14.32%** | cases with a complete blocking key | Superseded by P03 |
+| Overall duplicate | 4,505,344 / 20,535,213 = **21.94%** | every case | Superseded by P03 |
 
 **Which denominator the stage 2 rate uses.** 14.32 percent is computed against
 11,549,158, every case with a complete blocking key. That is the population the
@@ -275,6 +281,43 @@ ever compared against them.
 range over the whole corpus and 1,663,031 cases appear in both. They add because
 a probabilistic match is discarded at write time when its record is already
 recorded as superseded, so no case is counted under both rules.
+
+### What the defect fixes moved
+
+P03 re-ran stage 2 with all six defects closed and still comparing raw drug name
+strings, so this delta is the defect fixes alone. Stratum redefinition and
+normalization are separate components, measured separately, and not additive with
+this one: redefinition moves no count at all, it only changes which stratum a
+record belongs to.
+
+| Measure | P02 | After the fixes | Change |
+|---|---|---|---|
+| Records flagged | 4,505,344 | 4,479,514 | -25,830 |
+| Stage 2 flags | 1,653,845 | 1,628,015 | -25,830 |
+| Stage 2 population, per case | 11,548,620 | 9,885,533 | -1,663,087 |
+| Stage 2 rate | 14.32% | **16.47%** | +2.15pp |
+| Cases with no surviving representative | 38 | **0** | -38 |
+
+**The population row is a recount, not the published figure.** P02 published
+11,549,158, which counts publications. Differencing that against a per-case count
+would state a delta between two different measurements, which is the error defect 6
+exists to remove. Recounted per case in Postgres, P02's population is 11,548,620,
+and the change reconciles with no residual: less 1,663,085 superseded by stage 1,
+less the 2 cases with an empty drug set, gives exactly 9,885,533. The 538 between
+the two P02 figures is the republication gap on cases carrying a complete key.
+
+**The rate moved for a different reason than predicted.** The prediction above was
+16.74 percent, computed as 1,653,845 / 9,881,481. The realised denominator is
+9,885,533, only 4,052 away, so holding the P02 numerator against it still gives
+16.73 percent. Of the 0.268 point gap between prediction and measurement, 0.261
+points is the numerator falling to 1,628,015 and 0.007 points is the denominator.
+The population change was predicted accurately; what was not predicted is that
+25,830 matches would stop being made.
+
+**Chain verification passes.** Resolving all 4,479,514 canonical pointers gives
+zero closed components and zero cycles, so every flagged record now ends at a
+record nothing flagged and the surviving-count subtraction is sound. The 17
+components and 38 orphaned cases above are gone.
 
 ### A known weakness of the similarity criteria, measured
 
