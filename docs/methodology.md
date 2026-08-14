@@ -177,6 +177,18 @@ The procedure, in the order it must happen:
 4. Report the false-positive rate per subset with a binomial confidence
    interval, and the correction it implies for the overall duplicate rate.
 
+**Flags whose partner stage 1 removed must be drawable.** The write-time skip
+that keeps a case from being counted under both rules is one-sided: it discards a
+probabilistic match when the flagged record is superseded, not when the record it
+matched is. 98,376 stage 2 flags, 5.95 percent of the stage 2 numerator, name a
+canonical that stage 1 superseded. For 9,609 of those, 0.58 percent of the
+numerator, the version stage 1 kept could never have been compared against the
+flagged record - 7,202 because it blocks elsewhere, 2,407 because it has no
+complete blocking key - so nothing in the pass establishes that the flagged
+record duplicates anything remaining in the population. That is the over-merge
+direction this audit exists to bound, so the sample has to be able to draw these
+pairs; the skip does not resolve them.
+
 The tooling is built in the drug normalization prompt, alongside the stage 2
 re-run, so the audit and the re-run inform each other.
 
@@ -191,6 +203,16 @@ only attempted on cases with a complete blocking key, a strict subset.
 | Stage 1 supersession | 2,851,499 / 20,535,213 = **13.89%** | every case | Settled |
 | Stage 2 match | 1,653,845 / 11,549,158 = **14.32%** | cases with a complete blocking key | Provisional |
 | Overall duplicate | 4,505,344 / 20,535,213 = **21.94%** | every case | Provisional |
+
+**Which denominator the stage 2 rate uses.** 14.32 percent is computed against
+11,549,158, every case with a complete blocking key. That is the population the
+rule applies to, and it is the larger of the two candidate denominators. The pass
+itself blocked 11,544,512 of those cases; the remaining 4,646 have a complete key
+but are alone in their block, so nothing was ever compared against them. Against
+the pass's denominator the same numerator gives 14.33 percent. The two figures
+below that qualify the rate - the superseded share and the 16.74 percent - are
+computed on the pass's 11,544,512, because they describe what the pass did rather
+than what the rule covers.
 
 16,029,869 cases remain once everything flagged is removed. That count is
 provisional, because stage 2 is. Stage 1 at 13.89 percent is the only settled
@@ -209,8 +231,9 @@ neither is a property of the data:
   discarded when the results are written. Excluding them would put the rate at
   16.74 percent rather than 14.33.
 
-A third, smaller effect: 4,646 cases have a complete blocking key but are alone
-in their block, so nothing is ever compared against them.
+A third, smaller effect is the 4,646 single-member blocks noted above: they
+carry a complete key, so they are in the published denominator, but nothing was
+ever compared against them.
 
 **On the arithmetic.** The three counts add exactly: 2,851,499 + 1,653,845 =
 4,505,344. That is not because the populations are disjoint, since both stages

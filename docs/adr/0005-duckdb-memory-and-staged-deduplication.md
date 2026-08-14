@@ -135,6 +135,26 @@ survivors, which removes both problems and moves the rate. The pre-run and
 post-run stage 2 rates are therefore not comparable for this reason as well as
 for the stratum redefinition.
 
+### Defects carried into the re-run
+
+Found while reconciling the published figures, all in the deduplication pass, all
+fixed as part of the re-run rather than in the reporting pass that found them:
+
+1. Stage 2's population is restricted to stage 1 survivors, as above. This is the
+   change that moves the rate.
+2. `stats_from_store` counts every case with a complete blocking key, omitting
+   the `QUALIFY count(*) OVER (...) > 1` clause the pass applies, so its stage 2
+   denominator exceeds what the pass considered by 4,646. Both paths apply the
+   same filter.
+3. The pass keeps no counter for probabilistic matches discarded by the
+   supersession skip, so that quantity is not recoverable from stored state and
+   has to be re-derived by a second pass. Add the counter.
+4. The supersession skip is one-sided: it discards a match when the flagged
+   record is superseded, not when the record it matched is, which leaves 98,376
+   flags naming a canonical stage 1 removed. Restricting the population per item
+   1 removes the case, so this is a consequence to verify gone after the re-run
+   rather than a separate fix.
+
 ### Candidate rules, to be chosen after the audit and not before
 
 1. **Corroboration requirement.** A sparse pair additionally requires agreement
