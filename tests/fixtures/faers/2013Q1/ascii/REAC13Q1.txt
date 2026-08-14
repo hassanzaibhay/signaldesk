@@ -1,0 +1,1247 @@
+primaryid$caseid$pt
+30375293$3037529$Amenorrhoea
+30375293$3037529$Asthenia
+30375293$3037529$Bladder disorder
+30375293$3037529$Blood pressure increased
+30375293$3037529$Dehydration
+30375293$3037529$Depression
+30375293$3037529$Dry mouth
+30375293$3037529$Escherichia sepsis
+30375293$3037529$Hepatic failure
+30375293$3037529$Multiple sclerosis relapse
+30375293$3037529$Renal disorder
+30375293$3037529$Renal failure
+30375293$3037529$Urinary incontinence
+30375293$3037529$Urinary retention
+30375293$3037529$Urinary tract infection
+30936912$3093691$Convulsion
+30936912$3093691$Insomnia
+30936912$3093691$Muscle spasms
+30936912$3093691$Rhinitis
+32481334$3248133$Grand mal convulsion
+32481334$3248133$Influenza like illness
+32481334$3248133$Multiple sclerosis
+35865322$3586532$Agitation
+35865322$3586532$Apnoea
+35865322$3586532$Cardio-respiratory arrest
+35865322$3586532$Hyperhidrosis
+35865322$3586532$Injury
+35865322$3586532$Tonic convulsion
+37005182$3700518$Dyspnoea
+37005182$3700518$Musculoskeletal pain
+37005182$3700518$Myocardial infarction
+37005182$3700518$Oedema peripheral
+37005182$3700518$Pain
+37108102$3710810$Arthralgia
+37108102$3710810$Disturbance in attention
+37108102$3710810$Dizziness
+37108102$3710810$Hepatic function abnormal
+37108102$3710810$Muscle spasms
+37108102$3710810$Myalgia
+372465710$3724657$Cardiac failure
+372465710$3724657$Chest pain
+372465710$3724657$Congestive cardiomyopathy
+372465710$3724657$Coronary artery disease
+372465710$3724657$Dilatation ventricular
+372465710$3724657$Dyspnoea
+372465710$3724657$Ejection fraction decreased
+372465710$3724657$Electrocardiogram QT prolonged
+372465710$3724657$Fatigue
+372465710$3724657$Hypoperfusion
+372465710$3724657$Limb discomfort
+372465710$3724657$Mitral valve incompetence
+372465710$3724657$Myocardial ischaemia
+372465710$3724657$Persecutory delusion
+372465710$3724657$Psychotic disorder
+372465710$3724657$Pulmonary valve incompetence
+372465710$3724657$Sinus tachycardia
+372465710$3724657$Somatic delusion
+372465710$3724657$Systolic dysfunction
+372465710$3724657$Tricuspid valve incompetence
+372465710$3724657$Ventricular hypokinesia
+372465710$3724657$Withdrawal syndrome
+37820163$3782016$Confusional state
+37820163$3782016$Crying
+37820163$3782016$Hyperaesthesia
+37820163$3782016$Peripheral coldness
+37820163$3782016$Skin burning sensation
+38283002$3828300$Amnesia
+38283002$3828300$Cognitive disorder
+38283002$3828300$Computerised tomogram head
+38283002$3828300$Dysarthria
+38283002$3828300$Somnolence
+38346784$3834678$Blood pressure increased
+38346784$3834678$Norepinephrine increased
+38346784$3834678$Pseudophaeochromocytoma
+38346784$3834678$Tachycardia
+40096383$4009638$Bone marrow failure
+40096383$4009638$Malignant neoplasm progression
+40699374$4069937$Acute psychosis
+40699374$4069937$Appetite disorder
+40699374$4069937$Asthenia
+40699374$4069937$Constipation
+40699374$4069937$Fatigue
+40699374$4069937$Hallucination, auditory
+40699374$4069937$Hallucination, visual
+40699374$4069937$Neutrophil count increased
+40699374$4069937$Somnolence
+40699374$4069937$Thirst
+40699374$4069937$White blood cell count increased
+40699374$4069937$White blood cell disorder
+40729985$4072998$Abasia
+40729985$4072998$Alopecia
+40729985$4072998$Ankle fracture
+40729985$4072998$Fall
+40729985$4072998$Intervertebral discitis
+40729985$4072998$Mobility decreased
+40729985$4072998$Pyrexia
+40729985$4072998$Urinary tract infection
+40785014$4078501$Diarrhoea
+40785014$4078501$Fatigue
+40785014$4078501$Hyperglycaemia
+40785014$4078501$Malignant neoplasm progression
+41533373$4153337$Eosinophilic pneumonia
+41607282$4160728$Renal failure acute
+41607282$4160728$Tubulointerstitial nephritis
+41640515$4164051$Exposure during pregnancy
+41640515$4164051$Induced labour
+41640515$4164051$Intentional overdose
+41640515$4164051$Oligohydramnios
+41640515$4164051$Platelet aggregation decreased
+41640515$4164051$Platelet disorder
+41681449$4168144$Blood pressure increased
+41681449$4168144$Body temperature increased
+41681449$4168144$Chills
+41681449$4168144$Convulsion
+41681449$4168144$Depression
+41681449$4168144$Disease progression
+41681449$4168144$Dyskinesia
+41681449$4168144$Dystonia
+41681449$4168144$Eye movement disorder
+41681449$4168144$Gaze palsy
+41681449$4168144$Heart rate increased
+41681449$4168144$Leukoencephalopathy
+41681449$4168144$Loss of consciousness
+41681449$4168144$Muscle spasms
+41681449$4168144$Oxygen saturation decreased
+41681449$4168144$Tremor
+41690082$4169008$Dependence
+41690082$4169008$Drug ineffective
+41707202$4170720$Benign intracranial hypertension
+41707202$4170720$Cellulitis
+41707202$4170720$Encephalopathy
+41707202$4170720$Hallucination
+41707202$4170720$Myocarditis
+41825422$4182542$Blister
+41825422$4182542$Dyspnoea
+41825422$4182542$Pain
+41825422$4182542$Pruritus
+41825422$4182542$Skin exfoliation
+41825422$4182542$Skin reaction
+41825422$4182542$Wheezing
+419000614$4190006$Blood bilirubin increased
+419000614$4190006$Coma hepatic
+419000614$4190006$Depressed level of consciousness
+419000614$4190006$Dyspepsia
+419000614$4190006$Fatigue
+419000614$4190006$Haematocrit decreased
+419000614$4190006$Haemoglobin decreased
+419000614$4190006$Hepatic encephalopathy
+419000614$4190006$Hepatic function abnormal
+419000614$4190006$Hepatitis
+419000614$4190006$Hepatitis B
+419000614$4190006$Hypotension
+419000614$4190006$Jaundice
+419000614$4190006$Lymphopenia
+419000614$4190006$Malaise
+419000614$4190006$Multi-organ failure
+419000614$4190006$Neutropenia
+419000614$4190006$Platelet count decreased
+419000614$4190006$Pneumonia
+419000614$4190006$Prothrombin time prolonged
+419000614$4190006$Red blood cell count decreased
+419000614$4190006$Renal failure
+419000614$4190006$Respiratory distress
+419000614$4190006$White blood cell count decreased
+42052364$4205236$Accident
+42052364$4205236$Alopecia
+42052364$4205236$Bronchitis
+42052364$4205236$Cough
+42052364$4205236$Diaphragmatic hernia
+42052364$4205236$Gastrooesophageal reflux disease
+42052364$4205236$Pneumonia
+42052364$4205236$Road traffic accident
+42052364$4205236$Thrombosis
+42052364$4205236$Trichorrhexis
+42083669$4208366$Obliterative bronchiolitis
+42083669$4208366$Respiratory failure
+42083669$4208366$Stevens-Johnson syndrome
+420850714$4208507$Cerebral haemorrhage
+420850714$4208507$Corneal opacity
+420850714$4208507$Toxic epidermal necrolysis
+42120942$4212094$Gastric ulcer
+42120942$4212094$Haematemesis
+42120942$4212094$Helicobacter infection
+42120942$4212094$Melaena
+42187795$4218779$Angioedema
+42187795$4218779$Autoimmune thyroiditis
+42187795$4218779$Convulsion
+42187795$4218779$Myocardial infarction
+42187795$4218779$Urticaria
+42199212$4219921$Aspiration
+42199212$4219921$Blood creatine phosphokinase increased
+42199212$4219921$Completed suicide
+42199212$4219921$Convulsion
+42199212$4219921$Intentional overdose
+42199212$4219921$Renal failure
+46888503$4688850$Asthenia
+46888503$4688850$Blood creatine phosphokinase increased
+46888503$4688850$Drug interaction
+46888503$4688850$Pain in extremity
+46888503$4688850$Rhabdomyolysis
+566659712$5666597$Abdominal pain upper
+566659712$5666597$Agitation
+566659712$5666597$Altered state of consciousness
+566659712$5666597$Arteriosclerosis coronary artery
+566659712$5666597$Asthma
+566659712$5666597$Atelectasis
+566659712$5666597$Bipolar disorder
+566659712$5666597$Blood pressure decreased
+566659712$5666597$Bone disorder
+566659712$5666597$Bone lesion
+566659712$5666597$Bone swelling
+566659712$5666597$Borderline personality disorder
+566659712$5666597$Cardiac valve disease
+566659712$5666597$Chronic sinusitis
+566659712$5666597$Coma
+566659712$5666597$Convulsion
+566659712$5666597$Dental caries
+566659712$5666597$Dental necrosis
+566659712$5666597$Depressed level of consciousness
+566659712$5666597$Disturbance in social behaviour
+566659712$5666597$Dysarthria
+566659712$5666597$Electrocardiogram QT prolonged
+566659712$5666597$Epistaxis
+566659712$5666597$Essential hypertension
+566659712$5666597$Excessive granulation tissue
+566659712$5666597$Gangrene
+566659712$5666597$Gastric cancer
+566659712$5666597$Gastrointestinal disorder
+566659712$5666597$Generalised anxiety disorder
+566659712$5666597$Gingival erythema
+566659712$5666597$Head injury
+566659712$5666597$Hyperlipidaemia
+566659712$5666597$Hypoaesthesia oral
+566659712$5666597$Hypokalaemia
+566659712$5666597$Left ventricular hypertrophy
+566659712$5666597$Major depression
+566659712$5666597$Malaise
+566659712$5666597$Mass
+566659712$5666597$Metastases to bone
+566659712$5666597$Mood altered
+566659712$5666597$Muscular weakness
+566659712$5666597$Neoplasm malignant
+566659712$5666597$Oral discharge
+566659712$5666597$Osteomyelitis
+566659712$5666597$Osteonecrosis
+566659712$5666597$Osteonecrosis of jaw
+566659712$5666597$Osteorrhagia
+566659712$5666597$Overdose
+566659712$5666597$Pain
+566659712$5666597$Pain in jaw
+566659712$5666597$Renal cancer
+566659712$5666597$Renal cyst
+566659712$5666597$Renal disorder
+566659712$5666597$Rhabdomyolysis
+566659712$5666597$Road traffic accident
+566659712$5666597$Scoliosis
+566659712$5666597$Self injurious behaviour
+566659712$5666597$Soft tissue inflammation
+566659712$5666597$Suicide attempt
+566659712$5666597$Tachycardia
+566659712$5666597$Tooth infection
+566659712$5666597$Transient ischaemic attack
+566659712$5666597$Ulcer
+566659712$5666597$Urethral disorder
+566659712$5666597$Urinary tract infection
+566659712$5666597$Uterine leiomyoma
+566659712$5666597$Vision blurred
+566659712$5666597$Weight decreased
+56772392$5677239$Abortion spontaneous
+56772392$5677239$Exposure during pregnancy
+56772392$5677239$Foetal heart rate abnormal
+56772392$5677239$Vomiting
+56881064$5688106$Apparent death
+56881064$5688106$Cerebral haemorrhage
+56881064$5688106$Loss of consciousness
+56900042$5690004$Agitation
+56900042$5690004$Blood potassium decreased
+56900042$5690004$Blood urea decreased
+56900042$5690004$C-reactive protein increased
+56900042$5690004$Fatigue
+56900042$5690004$Full blood count abnormal
+56900042$5690004$Grand mal convulsion
+56900042$5690004$Hypotension
+56900042$5690004$Malaise
+56900042$5690004$Mycoplasma infection
+56900042$5690004$Mycoplasma test positive
+56900042$5690004$Nausea
+56900042$5690004$Neutrophil count decreased
+56900042$5690004$Platelet count increased
+56900042$5690004$Psychotic disorder
+56900042$5690004$Pyrexia
+56900042$5690004$Red blood cell sedimentation rate increased
+56900042$5690004$Toxicity to various agents
+56900042$5690004$Viral infection
+56900042$5690004$White blood cell count decreased
+56983832$5698383$Agitation
+56983832$5698383$Anxiety
+56983832$5698383$Blood cholesterol increased
+56983832$5698383$Blood glucose increased
+56983832$5698383$Blood lactate dehydrogenase decreased
+56983832$5698383$Blood triglycerides increased
+56983832$5698383$Blood urea increased
+56983832$5698383$C-reactive protein increased
+56983832$5698383$Confusional state
+56983832$5698383$Delirium
+56983832$5698383$Drug level increased
+56983832$5698383$Dyspnoea
+56983832$5698383$Haemoglobin decreased
+56983832$5698383$Hallucination, visual
+56983832$5698383$Hyperhidrosis
+56983832$5698383$Incontinence
+56983832$5698383$Influenza like illness
+56983832$5698383$Lower respiratory tract infection
+56983832$5698383$Malaise
+56983832$5698383$Nightmare
+56983832$5698383$Red blood cell count decreased
+56983832$5698383$Restlessness
+56983832$5698383$Salivary hypersecretion
+56983832$5698383$Tachycardia
+56983832$5698383$Weight decreased
+56983832$5698383$White blood cell count increased
+56995862$5699586$Drug interaction
+56995862$5699586$Hypotension
+56995862$5699586$Lactic acidosis
+56995862$5699586$Liver function test abnormal
+56995862$5699586$Pancreatitis
+56995862$5699586$Renal failure acute
+57052884$5705288$Arachnoiditis
+57052884$5705288$Cauda equina syndrome
+57052884$5705288$Facet joint syndrome
+57145734$5714573$Device failure
+57145734$5714573$Drug ineffective
+57145734$5714573$Injection site pain
+57145734$5714573$Product quality issue
+572612011$5726120$Amylase increased
+572612011$5726120$Appendicitis
+572612011$5726120$Blood triglycerides increased
+572612011$5726120$Bradycardia
+572612011$5726120$Dizziness
+572612011$5726120$Feeling cold
+572612011$5726120$Gamma-glutamyltransferase increased
+572612011$5726120$Gastric ulcer
+572612011$5726120$Herpes zoster
+572612011$5726120$Weight decreased
+57404352$5740435$Abortion spontaneous
+57404352$5740435$Drug abuse
+57404352$5740435$Exposure during pregnancy
+57419732$5741973$Barrett's oesophagus
+57419732$5741973$Haematemesis
+57529753$5752975$Biopsy liver
+57529753$5752975$Hepatitis C
+57571695$5757169$Dyspnoea
+57571695$5757169$Hallucination
+57571695$5757169$Impaired healing
+57571695$5757169$Multiple sclerosis relapse
+57571695$5757169$Myocardial infarction
+57571695$5757169$Postoperative wound complication
+57571695$5757169$Postoperative wound infection
+57571695$5757169$Wound closure
+57571695$5757169$Wound dehiscence
+57571695$5757169$Wound evisceration
+57604014$5760401$Abortion spontaneous
+57604014$5760401$Cardiac flutter
+57604014$5760401$Drug interaction
+57604014$5760401$Exposure during pregnancy
+57604014$5760401$Foetal death
+57604014$5760401$Vaginal haemorrhage
+57609912$5760991$Anaemia
+57609912$5760991$Neutropenia
+57684932$5768493$Thrombosis
+57805652$5780565$Body height decreased
+57805652$5780565$Colon cancer
+57805652$5780565$Diverticulum
+57805652$5780565$Gastric haemorrhage
+57805652$5780565$Haematemesis
+57805652$5780565$Haematochezia
+57805652$5780565$Thrombosis
+57992683$5799268$Deep vein thrombosis
+580019030$5800190$Anaemia
+580019030$5800190$Anxiety
+580019030$5800190$Aortic arteriosclerosis
+580019030$5800190$Atelectasis
+580019030$5800190$Back pain
+580019030$5800190$Blood creatinine increased
+580019030$5800190$Bone abscess
+580019030$5800190$Bone disorder
+580019030$5800190$Bone lesion
+580019030$5800190$Bone swelling
+580019030$5800190$Bursitis
+580019030$5800190$C-reactive protein increased
+580019030$5800190$Capillary leak syndrome
+580019030$5800190$Cardiomegaly
+580019030$5800190$Cardiotoxicity
+580019030$5800190$Cerebral small vessel ischaemic disease
+580019030$5800190$Compression fracture
+580019030$5800190$Computerised tomogram coronary artery abnormal
+580019030$5800190$Depressed mood
+580019030$5800190$Device malfunction
+580019030$5800190$Diarrhoea
+580019030$5800190$Diastolic dysfunction
+580019030$5800190$Dysphagia
+580019030$5800190$Dyspnoea exertional
+580019030$5800190$Ejection fraction abnormal
+580019030$5800190$Erythema
+580019030$5800190$Excessive granulation tissue
+580019030$5800190$Exostosis
+580019030$5800190$Fall
+580019030$5800190$Family stress
+580019030$5800190$Fibrosis
+580019030$5800190$Foreign body reaction
+580019030$5800190$Gastrooesophageal reflux disease
+580019030$5800190$Gingival disorder
+580019030$5800190$Gingival recession
+580019030$5800190$Gliosis
+580019030$5800190$Glomerular filtration rate abnormal
+580019030$5800190$Haemorrhage
+580019030$5800190$Haemorrhoids
+580019030$5800190$Heart rate decreased
+580019030$5800190$Hepatic calcification
+580019030$5800190$Hepatic cyst
+580019030$5800190$Hypercholesterolaemia
+580019030$5800190$Hyperplasia
+580019030$5800190$Impaired healing
+580019030$5800190$Implant site thrombosis
+580019030$5800190$Infection
+580019030$5800190$Inflammation
+580019030$5800190$Intervertebral disc degeneration
+580019030$5800190$Kyphosis
+580019030$5800190$Left atrial dilatation
+580019030$5800190$Liver disorder
+580019030$5800190$Malignant neoplasm progression
+580019030$5800190$Metastases to bone
+580019030$5800190$Metastases to bone marrow
+580019030$5800190$Metastases to lung
+580019030$5800190$Metastases to pleura
+580019030$5800190$Metastases to spine
+580019030$5800190$Mitral valve incompetence
+580019030$5800190$Nausea
+580019030$5800190$Obesity
+580019030$5800190$Oedema peripheral
+580019030$5800190$Oral disorder
+580019030$5800190$Oropharyngeal pain
+580019030$5800190$Osteitis deformans
+580019030$5800190$Osteoarthritis
+580019030$5800190$Osteomyelitis
+580019030$5800190$Osteonecrosis of jaw
+580019030$5800190$Osteopenia
+580019030$5800190$Pain
+580019030$5800190$Pain in extremity
+580019030$5800190$Pain in jaw
+580019030$5800190$Paraesthesia
+580019030$5800190$Pathological fracture
+580019030$5800190$Pericardial effusion
+580019030$5800190$Pleural effusion
+580019030$5800190$Primary sequestrum
+580019030$5800190$Pulmonary hypertension
+580019030$5800190$Pulmonary valve incompetence
+580019030$5800190$Red blood cell sedimentation rate increased
+580019030$5800190$Renal failure chronic
+580019030$5800190$Rotator cuff syndrome
+580019030$5800190$Sinus tachycardia
+580019030$5800190$Sinusitis
+580019030$5800190$Swelling
+580019030$5800190$Tooth disorder
+580019030$5800190$Tricuspid valve incompetence
+580019030$5800190$Trismus
+580019030$5800190$Upper respiratory tract infection
+580019030$5800190$Ventricular hypokinesia
+580019030$5800190$Vitamin D deficiency
+580019030$5800190$Vomiting
+58006212$5800621$Road traffic accident
+58006212$5800621$Vomiting
+58029663$5802966$Coronary artery occlusion
+58029663$5802966$Injection site pain
+580535816$5805358$Abdominal distension
+580535816$5805358$Abdominal pain
+580535816$5805358$Abscess jaw
+580535816$5805358$Acute respiratory distress syndrome
+580535816$5805358$Acute respiratory failure
+580535816$5805358$Amnesia
+580535816$5805358$Anaemia
+580535816$5805358$Anxiety
+580535816$5805358$Arrhythmia
+580535816$5805358$Arthritis
+580535816$5805358$Ataxia
+580535816$5805358$Back pain
+580535816$5805358$Bacterial disease carrier
+580535816$5805358$Blood alkaline phosphatase increased
+580535816$5805358$Blood immunoglobulin G increased
+580535816$5805358$Bone disorder
+580535816$5805358$Bone lesion
+580535816$5805358$Bone swelling
+580535816$5805358$Burning sensation
+580535816$5805358$Cardiac disorder
+580535816$5805358$Cardiomegaly
+580535816$5805358$Cardiomyopathy
+580535816$5805358$Catheterisation cardiac
+580535816$5805358$Cellulitis
+580535816$5805358$Convulsion
+580535816$5805358$Cyst
+580535816$5805358$Deafness
+580535816$5805358$Decreased interest
+580535816$5805358$Decubitus ulcer
+580535816$5805358$Dental caries
+580535816$5805358$Denture wearer
+580535816$5805358$Depression
+580535816$5805358$Device breakage
+580535816$5805358$Diabetes mellitus
+580535816$5805358$Diabetic neuropathy
+580535816$5805358$Disability
+580535816$5805358$Drug abuse
+580535816$5805358$Drug screen positive
+580535816$5805358$Emphysema
+580535816$5805358$Erectile dysfunction
+580535816$5805358$Excoriation
+580535816$5805358$Facial pain
+580535816$5805358$Fall
+580535816$5805358$Flushing
+580535816$5805358$Foot fracture
+580535816$5805358$Gastritis
+580535816$5805358$General physical health deterioration
+580535816$5805358$Granuloma annulare
+580535816$5805358$Haematocrit decreased
+580535816$5805358$Haemoglobin decreased
+580535816$5805358$Hallucination
+580535816$5805358$Headache
+580535816$5805358$Hepatic cyst
+580535816$5805358$Hepatic failure
+580535816$5805358$Hepatic lesion
+580535816$5805358$Hepatic steatosis
+580535816$5805358$Hepatitis
+580535816$5805358$Hypoglycaemia
+580535816$5805358$Hypogonadism
+580535816$5805358$Hypoxia
+580535816$5805358$Impaired healing
+580535816$5805358$Inflammation
+580535816$5805358$Influenza like illness
+580535816$5805358$Insomnia
+580535816$5805358$Intervertebral disc protrusion
+580535816$5805358$Left ventricular dysfunction
+580535816$5805358$Left ventricular hypertrophy
+580535816$5805358$Leukocytosis
+580535816$5805358$Libido decreased
+580535816$5805358$Local swelling
+580535816$5805358$Lung disorder
+580535816$5805358$Lung infiltration
+580535816$5805358$Lymphadenopathy
+580535816$5805358$Marrow hyperplasia
+580535816$5805358$Melaena
+580535816$5805358$Mental disorder
+580535816$5805358$Mental status changes
+580535816$5805358$Mitral valve incompetence
+580535816$5805358$Mouth ulceration
+580535816$5805358$Musculoskeletal discomfort
+580535816$5805358$Nasal congestion
+580535816$5805358$Oral disorder
+580535816$5805358$Oropharyngeal plaque
+580535816$5805358$Osteitis deformans
+580535816$5805358$Osteolysis
+580535816$5805358$Osteomyelitis
+580535816$5805358$Osteonecrosis
+580535816$5805358$Osteonecrosis of jaw
+580535816$5805358$Overweight
+580535816$5805358$Pain
+580535816$5805358$Pain in extremity
+580535816$5805358$Pain in jaw
+580535816$5805358$Pancreatic calcification
+580535816$5805358$Pancreatic duct dilatation
+580535816$5805358$Penile pain
+580535816$5805358$Penis disorder
+580535816$5805358$Periodontitis
+580535816$5805358$Peyronie's disease
+580535816$5805358$Plasmacytosis
+580535816$5805358$Platelet count decreased
+580535816$5805358$Pneumomediastinum
+580535816$5805358$Pneumonia
+580535816$5805358$Pneumothorax
+580535816$5805358$Primary sequestrum
+580535816$5805358$Productive cough
+580535816$5805358$Prostatitis
+580535816$5805358$Pulmonary mass
+580535816$5805358$Pyrexia
+580535816$5805358$Radiculopathy
+580535816$5805358$Red blood cell count decreased
+580535816$5805358$Renal failure acute
+580535816$5805358$Rhinitis
+580535816$5805358$Rib fracture
+580535816$5805358$Seborrhoeic keratosis
+580535816$5805358$Sepsis
+580535816$5805358$Sinus disorder
+580535816$5805358$Spinal disorder
+580535816$5805358$Stevens-Johnson syndrome
+580535816$5805358$Temporomandibular joint syndrome
+580535816$5805358$Tubulointerstitial nephritis
+580535816$5805358$Upper-airway cough syndrome
+580535816$5805358$Urinary retention
+580535816$5805358$Urticaria
+580535816$5805358$Ventricular arrhythmia
+580535816$5805358$Ventricular tachycardia
+580535816$5805358$Vision blurred
+580535816$5805358$White blood cell count increased
+580535816$5805358$Wound dehiscence
+58117054$5811705$Haematuria
+58117054$5811705$IgA nephropathy
+58123843$5812384$Abnormal dreams
+58123843$5812384$Aggression
+58123843$5812384$Anxiety
+58123843$5812384$Disturbance in attention
+58123843$5812384$Drug withdrawal syndrome
+58123843$5812384$Emotional disorder
+58123843$5812384$Irritability
+58123843$5812384$Nightmare
+58123843$5812384$Overdose
+58123843$5812384$Suicide attempt
+58130062$5813006$Aggression
+58130062$5813006$Anxiety
+58130062$5813006$Depressed mood
+58130062$5813006$Depression
+58130062$5813006$Disturbance in attention
+58130062$5813006$Insomnia
+58130062$5813006$Memory impairment
+58130062$5813006$Mental disorder
+58130062$5813006$Overdose
+58130062$5813006$Panic attack
+58130062$5813006$Self esteem decreased
+58130062$5813006$Suicidal ideation
+58130062$5813006$Suicide attempt
+58130062$5813006$Tearfulness
+58254886$5825488$Hepatitis C
+58254886$5825488$Hyperglycaemia
+58267236$5826723$Atrial septal defect
+58267236$5826723$Cyanosis neonatal
+58267236$5826723$Foetal exposure during pregnancy
+58267236$5826723$Left ventricular hypertrophy
+58290122$5829012$Blood bicarbonate decreased
+58290122$5829012$Blood urea increased
+58290122$5829012$Dialysis
+58290122$5829012$Diarrhoea
+58290122$5829012$Hyperkalaemia
+58290122$5829012$Loss of consciousness
+58290122$5829012$Renal failure acute
+58370445$5837044$Abortion spontaneous
+58370445$5837044$Exposure during pregnancy
+58397136$5839713$Hypersensitivity
+58397136$5839713$Hypotension
+58397136$5839713$Lung infiltration
+58397136$5839713$Malignant neoplasm progression
+58569043$5856904$ASPIRATION
+58569043$5856904$EPISTAXIS
+58569043$5856904$SUDDEN DEATH
+58700223$5870022$Agitation
+58700223$5870022$Bundle branch block right
+58700223$5870022$Electrocardiogram QT prolonged
+58700223$5870022$Gait disturbance
+58700223$5870022$Mydriasis
+58700223$5870022$Myocardial ischaemia
+58700223$5870022$Overdose
+58700223$5870022$Sinus tachycardia
+58700223$5870022$Somnolence
+58748824$5874882$Back pain
+58748824$5874882$Convulsion
+58748824$5874882$Gingival bleeding
+58748824$5874882$Obesity
+58748824$5874882$Pulmonary haemorrhage
+58748824$5874882$Restlessness
+58748824$5874882$Splenomegaly
+58748824$5874882$Sudden death
+58748824$5874882$Tension
+58748824$5874882$Visual acuity reduced
+58748824$5874882$Vomiting
+58776582$5877658$Completed suicide
+58776582$5877658$Depressed level of consciousness
+58776582$5877658$Intentional overdose
+58776582$5877658$Respiratory arrest
+58889002$5888900$Dialysis
+58889002$5888900$Hypercalcaemia
+58889002$5888900$Renal failure acute
+58889002$5888900$Rhabdomyolysis
+58892384$5889238$Convulsion
+58892384$5889238$Gastric ulcer
+58892384$5889238$Hallucination
+58892384$5889238$Insomnia
+58892384$5889238$Muscle spasms
+58892384$5889238$Neuroleptic malignant syndrome
+58892384$5889238$Restlessness
+58892384$5889238$Sudden death
+58892384$5889238$Vomiting
+58892384$5889238$Weight increased
+589071212$5890712$Abdominal pain
+589071212$5890712$Aortic calcification
+589071212$5890712$Ascites
+589071212$5890712$Asthenia
+589071212$5890712$Back pain
+589071212$5890712$Blood magnesium decreased
+589071212$5890712$Bronchiectasis
+589071212$5890712$Chest pain
+589071212$5890712$Chronic obstructive pulmonary disease
+589071212$5890712$Constipation
+589071212$5890712$Death
+589071212$5890712$Delirium
+589071212$5890712$Depression
+589071212$5890712$Diarrhoea
+589071212$5890712$Dizziness
+589071212$5890712$Emphysema
+589071212$5890712$Gingival erythema
+589071212$5890712$Headache
+589071212$5890712$Hepatomegaly
+589071212$5890712$Hypoxia
+589071212$5890712$Ileus
+589071212$5890712$Malignant neoplasm progression
+589071212$5890712$Metastases to lung
+589071212$5890712$Metastases to peritoneum
+589071212$5890712$Musculoskeletal pain
+589071212$5890712$Nausea
+589071212$5890712$Oral disorder
+589071212$5890712$Orthostatic hypotension
+589071212$5890712$Osteomyelitis
+589071212$5890712$Osteonecrosis of jaw
+589071212$5890712$Osteopenia
+589071212$5890712$Pain in jaw
+589071212$5890712$Pleural effusion
+589071212$5890712$Pneumonia
+589071212$5890712$Pulmonary embolism
+589071212$5890712$Pulmonary fibrosis
+589071212$5890712$Pulmonary valve incompetence
+589071212$5890712$Small intestinal obstruction
+589071212$5890712$Soft tissue inflammation
+589071212$5890712$Tachycardia
+589071212$5890712$Tricuspid valve incompetence
+589071212$5890712$Urinary tract infection
+589071212$5890712$Vomiting
+59053162$5905316$Cutaneous lupus erythematosus
+59064332$5906433$Cutaneous lupus erythematosus
+592472634$5924726$Abscess jaw
+592472634$5924726$Adnexa uteri mass
+592472634$5924726$Amnesia
+592472634$5924726$Angioedema
+592472634$5924726$Anxiety
+592472634$5924726$Arthritis
+592472634$5924726$Atrophic vulvovaginitis
+592472634$5924726$Bacterial disease carrier
+592472634$5924726$Biopsy tongue abnormal
+592472634$5924726$Bone disorder
+592472634$5924726$Bronchitis
+592472634$5924726$Bundle branch block left
+592472634$5924726$Cataract
+592472634$5924726$Cerebral ischaemia
+592472634$5924726$Coital bleeding
+592472634$5924726$Conjunctivitis bacterial
+592472634$5924726$Conjunctivitis viral
+592472634$5924726$Corneal abrasion
+592472634$5924726$Decreased interest
+592472634$5924726$Deep vein thrombosis
+592472634$5924726$Deformity
+592472634$5924726$Dental caries
+592472634$5924726$Dermatitis atopic
+592472634$5924726$Diverticulum intestinal
+592472634$5924726$Eczema
+592472634$5924726$Emotional distress
+592472634$5924726$Exostosis
+592472634$5924726$Fall
+592472634$5924726$Folliculitis
+592472634$5924726$Foot deformity
+592472634$5924726$Foreign body in eye
+592472634$5924726$Gastrooesophageal reflux disease
+592472634$5924726$General physical health deterioration
+592472634$5924726$Gingival erythema
+592472634$5924726$Gingival swelling
+592472634$5924726$Gingival ulceration
+592472634$5924726$Haemorrhoids
+592472634$5924726$Hot flush
+592472634$5924726$Hyperlipidaemia
+592472634$5924726$Hypertension
+592472634$5924726$Hypophagia
+592472634$5924726$Intervertebral disc protrusion
+592472634$5924726$Joint injury
+592472634$5924726$Lacrimation increased
+592472634$5924726$Lactose intolerance
+592472634$5924726$Large intestine polyp
+592472634$5924726$Leukocytosis
+592472634$5924726$Life expectancy shortened
+592472634$5924726$Local swelling
+592472634$5924726$Lumbar spinal stenosis
+592472634$5924726$Micturition urgency
+592472634$5924726$Mononucleosis syndrome
+592472634$5924726$Muscle injury
+592472634$5924726$Nasopharyngitis
+592472634$5924726$Neoplasm malignant
+592472634$5924726$Ocular hyperaemia
+592472634$5924726$Oedema mouth
+592472634$5924726$Onychomycosis
+592472634$5924726$Oral pain
+592472634$5924726$Osteomyelitis
+592472634$5924726$Osteonecrosis of jaw
+592472634$5924726$Osteopenia
+592472634$5924726$Pain in extremity
+592472634$5924726$Peptic ulcer
+592472634$5924726$Periodontitis
+592472634$5924726$Phlebitis deep
+592472634$5924726$Polyp
+592472634$5924726$Postmenopausal haemorrhage
+592472634$5924726$Primary sequestrum
+592472634$5924726$Pulmonary mass
+592472634$5924726$Salivary gland enlargement
+592472634$5924726$Sciatica
+592472634$5924726$Skin papilloma
+592472634$5924726$Soft tissue disorder
+592472634$5924726$Soft tissue infection
+592472634$5924726$Spinal osteoarthritis
+592472634$5924726$Spondylolisthesis
+592472634$5924726$Swelling
+592472634$5924726$Swollen tongue
+592472634$5924726$Tendon injury
+592472634$5924726$Thrombophlebitis
+592472634$5924726$Tooth abscess
+592472634$5924726$Urinary incontinence
+592472634$5924726$Urinary tract infection
+592472634$5924726$Uterine cervical squamous metaplasia
+592472634$5924726$Uterine enlargement
+592472634$5924726$Uterine leiomyoma
+592472634$5924726$Uterine polyp
+592472634$5924726$Vaginal haemorrhage
+592472634$5924726$Vulvovaginal dryness
+59284102$5928410$Diarrhoea
+59284102$5928410$Myoclonus
+59284102$5928410$Pneumonia
+595325616$5953256$Abdominal discomfort
+595325616$5953256$Abdominal pain
+595325616$5953256$Abdominal pain lower
+595325616$5953256$Acute tonsillitis
+595325616$5953256$Arthralgia
+595325616$5953256$Arthritis
+595325616$5953256$Autoimmune disorder
+595325616$5953256$Body height decreased
+595325616$5953256$Bone disorder
+595325616$5953256$Burns second degree
+595325616$5953256$Colitis
+595325616$5953256$Colitis ulcerative
+595325616$5953256$Connective tissue disorder
+595325616$5953256$Constipation
+595325616$5953256$Diarrhoea
+595325616$5953256$Dyspepsia
+595325616$5953256$Ear pain
+595325616$5953256$Emotional distress
+595325616$5953256$Flatulence
+595325616$5953256$Frequent bowel movements
+595325616$5953256$Gastrointestinal disorder
+595325616$5953256$Haematochezia
+595325616$5953256$Hot flush
+595325616$5953256$Hyperhidrosis
+595325616$5953256$Inflammatory bowel disease
+595325616$5953256$Internal injury
+595325616$5953256$Intestinal haemorrhage
+595325616$5953256$Joint crepitation
+595325616$5953256$Mouth ulceration
+595325616$5953256$Musculoskeletal chest pain
+595325616$5953256$Musculoskeletal disorder
+595325616$5953256$Musculoskeletal pain
+595325616$5953256$Nausea
+595325616$5953256$Osteoarthritis
+595325616$5953256$Osteopenia
+595325616$5953256$Osteoporosis
+595325616$5953256$Pain
+595325616$5953256$Palindromic rheumatism
+595325616$5953256$Rectal haemorrhage
+595325616$5953256$Rectal polyp
+595325616$5953256$Restless legs syndrome
+595325616$5953256$Rheumatoid arthritis
+595325616$5953256$Rhinitis allergic
+595325616$5953256$Scoliosis
+595325616$5953256$Sinusitis
+595325616$5953256$Systemic lupus erythematosus
+595325616$5953256$Temporomandibular joint syndrome
+595325616$5953256$Tendonitis
+595325616$5953256$Vasculitis
+595325616$5953256$Vertigo
+595325616$5953256$Weight increased
+59534574$5953457$Agranulocytosis
+59534574$5953457$C-reactive protein increased
+59534574$5953457$Haemoglobin decreased
+59534574$5953457$White blood cell count decreased
+59575783$5957578$Diarrhoea
+59575783$5957578$Myoclonus
+59575783$5957578$Pneumonia
+59616553$5961655$Dyspnoea
+59616553$5961655$Interstitial lung disease
+59616553$5961655$Pulmonary function test decreased
+596488917$5964889$Abscess
+596488917$5964889$Alanine aminotransferase increased
+596488917$5964889$Aspartate aminotransferase increased
+596488917$5964889$Bone disorder
+596488917$5964889$Bone erosion
+596488917$5964889$Bone lesion
+596488917$5964889$Breath odour
+596488917$5964889$Constipation
+596488917$5964889$Feeling abnormal
+596488917$5964889$Fungal infection
+596488917$5964889$Gingival disorder
+596488917$5964889$Gingival pain
+596488917$5964889$Hepatic cyst
+596488917$5964889$Hepatic steatosis
+596488917$5964889$Hip fracture
+596488917$5964889$Hypoaesthesia
+596488917$5964889$Immune system disorder
+596488917$5964889$Impaired healing
+596488917$5964889$Intervertebral disc degeneration
+596488917$5964889$Intervertebral disc protrusion
+596488917$5964889$Lichen planus
+596488917$5964889$Lymphadenopathy
+596488917$5964889$Metastases to bone
+596488917$5964889$Metastases to central nervous system
+596488917$5964889$Metastases to liver
+596488917$5964889$Metastases to lung
+596488917$5964889$Metastases to lymph nodes
+596488917$5964889$Mucosal inflammation
+596488917$5964889$Nephrolithiasis
+596488917$5964889$Neuropathy peripheral
+596488917$5964889$Oral pain
+596488917$5964889$Osteonecrosis of jaw
+596488917$5964889$Paraesthesia
+596488917$5964889$Pathological fracture
+596488917$5964889$Pulmonary mass
+596488917$5964889$Swelling
+596488917$5964889$Tachycardia
+596488917$5964889$Tooth abscess
+596488917$5964889$Wound secretion
+59701002$5970100$Abortion spontaneous
+59701002$5970100$Exposure during pregnancy
+597058126$5970581$Abscess
+597058126$5970581$Abscess oral
+597058126$5970581$Acquired oesophageal web
+597058126$5970581$Actinomycosis
+597058126$5970581$Amnesia
+597058126$5970581$Anaemia
+597058126$5970581$Antinuclear antibody positive
+597058126$5970581$Arthralgia
+597058126$5970581$Arthropathy
+597058126$5970581$Asthma
+597058126$5970581$Back pain
+597058126$5970581$Bone lesion
+597058126$5970581$Bone loss
+597058126$5970581$Bone marrow failure
+597058126$5970581$Bone swelling
+597058126$5970581$Bronchitis
+597058126$5970581$Bursitis
+597058126$5970581$Cellulitis
+597058126$5970581$Cholelithiasis
+597058126$5970581$Chondromalacia
+597058126$5970581$Clostridium difficile colitis
+597058126$5970581$Colitis ulcerative
+597058126$5970581$Corneal abrasion
+597058126$5970581$Cyst
+597058126$5970581$Deafness
+597058126$5970581$Dental discomfort
+597058126$5970581$Depression
+597058126$5970581$Diarrhoea
+597058126$5970581$Dysphagia
+597058126$5970581$Ecchymosis
+597058126$5970581$Epicondylitis
+597058126$5970581$Epistaxis
+597058126$5970581$Exostosis
+597058126$5970581$Exposed bone in jaw
+597058126$5970581$Eye irritation
+597058126$5970581$Eye pain
+597058126$5970581$Fat tissue increased
+597058126$5970581$Fibrosis
+597058126$5970581$Fistula
+597058126$5970581$Foot fracture
+597058126$5970581$Gastrooesophageal reflux disease
+597058126$5970581$Hiatus hernia
+597058126$5970581$Hypoaesthesia
+597058126$5970581$Intervertebral disc protrusion
+597058126$5970581$Intervertebral disc space narrowing
+597058126$5970581$Laryngitis
+597058126$5970581$Ligament sprain
+597058126$5970581$Malignant neoplasm progression
+597058126$5970581$Mastication disorder
+597058126$5970581$Mouth ulceration
+597058126$5970581$Multiple sclerosis
+597058126$5970581$Muscle spasms
+597058126$5970581$Muscular weakness
+597058126$5970581$Musculoskeletal pain
+597058126$5970581$Myalgia
+597058126$5970581$Myofascitis
+597058126$5970581$Neck mass
+597058126$5970581$Neck pain
+597058126$5970581$Night sweats
+597058126$5970581$Nodule
+597058126$5970581$Oesophageal stenosis
+597058126$5970581$Oral candidiasis
+597058126$5970581$Oral pustule
+597058126$5970581$Osteoarthritis
+597058126$5970581$Osteomyelitis
+597058126$5970581$Osteonecrosis of jaw
+597058126$5970581$Osteosclerosis
+597058126$5970581$Pain in extremity
+597058126$5970581$Pain in jaw
+597058126$5970581$Peroneal nerve palsy
+597058126$5970581$Plasma cell myeloma
+597058126$5970581$Plasma cell myeloma recurrent
+597058126$5970581$Pneumonia
+597058126$5970581$Rash pustular
+597058126$5970581$Renal failure acute
+597058126$5970581$Renal failure chronic
+597058126$5970581$Renal impairment
+597058126$5970581$Rheumatoid arthritis
+597058126$5970581$Sinusitis
+597058126$5970581$Skin lesion
+597058126$5970581$Somnolence
+597058126$5970581$Spinal column stenosis
+597058126$5970581$Spinal cord oedema
+597058126$5970581$Spinal osteoarthritis
+597058126$5970581$Staphylococcal infection
+597058126$5970581$Stomatitis
+597058126$5970581$Swelling
+597058126$5970581$Temperature intolerance
+597058126$5970581$Tendonitis
+597058126$5970581$Tongue discolouration
+597058126$5970581$Tubulointerstitial nephritis
+597058126$5970581$Upper respiratory tract infection
+597058126$5970581$Urinary incontinence
+597058126$5970581$Urinary tract infection
+597058126$5970581$Uterine leiomyoma
+59771548$5977154$Anaemia
+59771548$5977154$Cardiac disorder
+59771548$5977154$Cardiac valve disease
+59771548$5977154$Cardiac valve vegetation
+59771548$5977154$Cerebral haemorrhage
+59771548$5977154$Cerebral infarction
+59771548$5977154$Cerebrovascular accident
+59771548$5977154$Embolism
+59771548$5977154$Inflammation
+59771548$5977154$Mitral valve disease
+59771548$5977154$Myocardial infarction
+59771548$5977154$Rheumatoid arthritis
+59771548$5977154$Rheumatoid nodule
+59771548$5977154$Transient ischaemic attack
+59781436$5978143$Depression
+59781436$5978143$IgA nephropathy
+59781436$5978143$Kidney transplant rejection
+59781436$5978143$Lip dry
+59781436$5978143$Renal disorder
+59781436$5978143$Renal failure chronic
+59785113$5978511$Apgar score abnormal
+59785113$5978511$Death
+59785113$5978511$Diaphragmatic hernia
+59785113$5978511$Foetal exposure during pregnancy
+59785113$5978511$Haemorrhage
+59785113$5978511$Premature baby
+59785113$5978511$Pulmonary hypoplasia
+59785113$5978511$Renal dysplasia
+59785113$5978511$Ventricular hypoplasia
+59806783$5980678$Abortion induced
+59806783$5980678$Adrenal haemorrhage
+59806783$5980678$Amniotic fluid volume decreased
+59806783$5980678$Congenital cystic kidney disease
+59806783$5980678$Exposure during pregnancy
+59806783$5980678$Fatigue
+59806783$5980678$Pulmonary hypoplasia
+59806783$5980678$Renal dysplasia
+59806783$5980678$Stillbirth
+59806783$5980678$Subarachnoid haemorrhage
+59806783$5980678$Weight gain poor
+59817712$5981771$Electrocardiogram QRS complex prolonged
+59817712$5981771$Electrocardiogram QT prolonged
+59817712$5981771$Grand mal convulsion
+59817712$5981771$Hypotension
+59817712$5981771$Intentional overdose
+59817712$5981771$Mental status changes
+59817712$5981771$Metabolic acidosis
+59817712$5981771$Nausea
+59817712$5981771$Vomiting
+59885492$5988549$Alanine aminotransferase increased
+59885492$5988549$Exposure during pregnancy
+59885492$5988549$Premature delivery
+59885492$5988549$Premature rupture of membranes
+59921935$5992193$Developmental delay
+59921935$5992193$Drug withdrawal syndrome neonatal
+59921935$5992193$Foetal exposure during pregnancy
+59922569$5992256$Anaemia
+59922569$5992256$Clostridium difficile colitis
+59922569$5992256$Dehydration
+59922569$5992256$Mucosal inflammation
+59961562$5996156$Abdominal pain
+59961562$5996156$Dyskinesia
+59961562$5996156$Intentional overdose
+59961562$5996156$Nausea
+59961562$5996156$Neutrophilia
+59972323$5997232$Exposure during pregnancy
+59972323$5997232$Premature delivery
+59972323$5997232$Premature separation of placenta
+59976162$5997616$Pruritus
+59976162$5997616$Rash papular
+62012203$6201220$Osteonecrosis
+62263022$6226302$Drug withdrawal syndrome neonatal
+62263022$6226302$Exposure during breast feeding
+62263022$6226302$Foetal exposure during pregnancy
+62263022$6226302$Foetal growth restriction
+62359262$6235926$Foetal exposure during pregnancy
+62359262$6235926$Respiratory disorder
+647096812$6470968$Atrial septal defect
+647096812$6470968$Cardiac murmur
+647096812$6470968$Eye movement disorder
+647096812$6470968$Failure to thrive
+647096812$6470968$Foetal exposure during pregnancy
+647096812$6470968$Right ventricular hypertrophy
+647096812$6470968$Ventricular septal defect
+65304932$6530493$Maternal exposure during pregnancy
+65304932$6530493$Spina bifida
+65868224$6586822$Foetal exposure during pregnancy
+65868224$6586822$Hand-foot-and-mouth disease
+65868224$6586822$Immunosuppressant drug level increased
+65868224$6586822$Respiratory distress
+65868224$6586822$Respiratory tract infection
+65924173$6592417$Apnoea
+65924173$6592417$Aspiration
+65924173$6592417$Convulsion
+65924173$6592417$Overdose
+65924173$6592417$Pneumonitis
+65924173$6592417$Sepsis
+67634732$6763473$Congenital anomaly
+67634732$6763473$Maternal drugs affecting foetus
+67634732$6763473$Premature baby
+67634732$6763473$Pyloric stenosis
+67634732$6763473$Small for dates baby
+67741734$6774173$Accidental exposure to product by child
+67741734$6774173$Convulsion
+67741734$6774173$Respiratory arrest
+67741743$6774174$Accidental exposure to product by child
+67741743$6774174$Respiratory arrest
+67821562$6782156$Exposure during breast feeding
+67821562$6782156$Foetal exposure during pregnancy
+67821562$6782156$Irritability
+67821562$6782156$Jaundice neonatal
+67821562$6782156$Low birth weight baby
+67821562$6782156$Small for dates baby
+68866184$6886618$Asperger's disorder
+68866184$6886618$Fallot's tetralogy
+68866184$6886618$Gastrooesophageal reflux disease
+69511702$6951170$Infusion related reaction
+72072672$7207267$Drug eruption
+72072672$7207267$Necrotising fasciitis
+76917882$7691788$Amnesia
+76917882$7691788$Economic problem
+76917882$7691788$Emotional disorder
+76917882$7691788$Tardive dyskinesia
+76917882$7691788$Tremor
+79501272$7950127$Haemangioma congenital
+79918455$7991845$Atrial septal defect
+79918455$7991845$Congenital aortic valve incompetence
+79918455$7991845$Double outlet right ventricle
+79918455$7991845$Foetal exposure during pregnancy
+79918455$7991845$Heart disease congenital
+79918455$7991845$Heterotaxia
+79918455$7991845$Mitral valve incompetence
+79918455$7991845$Patent ductus arteriosus
+79918455$7991845$Right ventricular hypertrophy
+79918455$7991845$Sinus arrhythmia
+79918455$7991845$Transposition of the great vessels
+79918455$7991845$Tricuspid valve incompetence
+79918455$7991845$Vascular anomaly
+79918455$7991845$Ventricular septal defect
+79928476$7992847$Feeding disorder
+79928476$7992847$Foetal exposure during pregnancy
+79928476$7992847$Jaundice
+79928476$7992847$Mitral valve incompetence
+79928476$7992847$Tricuspid valve incompetence
+79928476$7992847$Ventricular septal defect
+81911625$8191162$ARRHYTHMIA
+81911625$8191162$BLOOD PRESSURE SYSTOLIC INCREASED
+81911625$8191162$DRUG ADMINISTRATION ERROR
+81911625$8191162$DRUG INEFFECTIVE
+81911625$8191162$HEADACHE
+81911625$8191162$INSOMNIA
+81911625$8191162$OVERDOSE
+81911625$8191162$VISUAL IMPAIRMENT
+82596532$8259653$Acute respiratory distress syndrome
+82596532$8259653$Disseminated tuberculosis
+82596532$8259653$Immune reconstitution inflammatory syndrome
+82596532$8259653$Lung infection
+82596532$8259653$Multi-organ failure
+82596532$8259653$Pneumonia
+82751719$8275171$Atrial septal defect
+82751719$8275171$Atrioventricular block complete
+82751719$8275171$Cardiac failure congestive
+82751719$8275171$Cardiomegaly
+82751719$8275171$Cyanosis
+82751719$8275171$Diastolic dysfunction
+82751719$8275171$Dilatation ventricular
+82751719$8275171$Failure to thrive
+82751719$8275171$Maternal exposure timing unspecified
+82751719$8275171$Pulmonary artery dilatation
+82751719$8275171$Pulmonary hypertension
+82751719$8275171$Pulmonary oedema
+82751719$8275171$Pulmonary valve incompetence
+82751719$8275171$Right ventricular hypertrophy
+82751719$8275171$Ventricular septal defect
+82902153$8290215$Foetal exposure during pregnancy
+82902153$8290215$Premature baby
+84605132$8460513$Atrial septal defect
+84605132$8460513$Hypospadias
+84605132$8460513$Maternal exposure timing unspecified
+84605132$8460513$Patent ductus arteriosus
+84605132$8460513$Pulmonary artery stenosis
+84605132$8460513$Transposition of the great vessels
+87630502$8763050$Application site infection
+87630502$8763050$Post procedural infection
+88292152$8829215$Hypospadias
+88292152$8829215$Syndactyly
+89687552$8968755$Anaphylactic reaction
+89687552$8968755$Angioedema
+89687552$8968755$Anuria
+89687552$8968755$Capillary leak syndrome
+89687552$8968755$Disseminated intravascular coagulation
+89687552$8968755$Erythema
+89687552$8968755$Fibrinolysis increased
+89687552$8968755$Haemodynamic instability
+89687552$8968755$Hypotension
+89687552$8968755$Hypovolaemia
+89687552$8968755$Lactic acidosis
+89687552$8968755$Localised intraabdominal fluid collection
+89687552$8968755$Multi-organ failure
+89687552$8968755$Post procedural complication
+89687552$8968755$Rubber sensitivity
+89687552$8968755$Shock
+89687552$8968755$Vascular resistance systemic decreased
+89687552$8968755$Wound haemorrhage
+89871272$8987127$Pulmonary hypertension
+90265441$9026544$Axillary vein thrombosis
+90265441$9026544$Bacteraemia
+90265441$9026544$Bronchopulmonary aspergillosis
+90265441$9026544$Deep vein thrombosis
+90265441$9026544$Febrile neutropenia
+90265441$9026544$Fusobacterium infection
+90265441$9026544$Lung infection
+90265441$9026544$Thrombophlebitis superficial
+90330621$9033062$Body temperature increased
+90330621$9033062$Convulsion
+90394811$9039481$Arrhythmia
+90394811$9039481$Metabolic acidosis
+90394811$9039481$Mitochondrial DNA mutation
+90394811$9039481$Propofol infusion syndrome
+90394811$9039481$Shock
+92453021$9245302$Death neonatal
+92453021$9245302$Premature baby
+95137021$9513702$Laboratory test abnormal

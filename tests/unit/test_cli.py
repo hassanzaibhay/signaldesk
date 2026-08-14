@@ -36,7 +36,6 @@ def test_version_prints_the_package_version() -> None:
 @pytest.mark.parametrize(
     ("command", "prompt"),
     [
-        (["ingest", "faers"], "P02"),
         (["ingest", "labels"], "P05"),
         (["ingest", "ctgov"], "P06"),
         (["ingest", "pubmed"], "P07"),
@@ -51,6 +50,14 @@ def test_unimplemented_stage_names_its_roadmap_prompt(command: list[str], prompt
     assert result.exit_code != 0
     assert isinstance(result.exception, NotImplementedError)
     assert prompt in str(result.exception)
+
+
+def test_implemented_ingest_commands_are_listed() -> None:
+    """FAERS ingest is implemented, so it must no longer advertise a prompt."""
+    result = runner.invoke(app, ["ingest", "--help"])
+    assert result.exit_code == 0
+    for command in ("faers", "faers-dedup", "faers-status", "faers-quality"):
+        assert command in result.stdout
 
 
 def test_evals_run_reports_the_suite_it_cannot_run_yet() -> None:

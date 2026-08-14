@@ -11,13 +11,20 @@ of a silent no-op.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import TYPE_CHECKING, Annotated, NoReturn
 
 import typer
 
 from signaldesk import __version__
 from signaldesk.core.logging import configure_logging, get_logger
+
+if TYPE_CHECKING:
+    # Type-only: importing these for real pulls in the ORM, and the app registry
+    # is not loaded until a command that needs it calls _setup_django.
+    from signaldesk.ingest.faers.pipeline import QuarterResult
+    from signaldesk.ingest.faers.quarter import Quarter
 
 log = get_logger(__name__)
 
@@ -73,6 +80,19 @@ def _owned_by(prompt: str, stage: str) -> NoReturn:
     raise NotImplementedError(message)
 
 
+def _setup_django() -> None:
+    """Make the ORM usable from the command line.
+
+    Commands that touch the database need the app registry loaded. Doing it here
+    rather than at import time keeps `--help` fast and keeps the modules that do
+    not need a database free of the dependency.
+    """
+    import django
+
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "signaldesk.web.config.settings.dev")
+    django.setup()
+
+
 @app.callback()
 def main(
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug-level logs.")] = False,
@@ -87,10 +107,222 @@ def version() -> None:
     typer.echo(__version__)
 
 
+def _results_from_manifest(
+    start: Quarter | None = None, end: Quarter | None = None
+) -> list[QuarterResult]:
+    """Rebuild per-quarter results from the manifest.
+
+    The manifest is what the ingest actually recorded, so a report built from it
+    describes the corpus on disk rather than the arguments of the current call.
+    """
+    from signaldesk.ingest.faers.pipeline import QuarterResult
+    from signaldesk.ingest.faers.quarter import Quarter
+    from signaldesk.web.signals.models import IngestManifest
+
+    results: list[QuarterResult] = []
+    rows = IngestManifest.objects.filter(source="faers", status="completed").order_by("unit")
+    for row in rows:
+        quarter = Quarter.parse(row.unit)
+        if (start is not None and quarter < start) or (end is not None and quarter > end):
+            continue
+        result = QuarterResult(quarter=quarter)
+        result.row_counts = dict(row.row_counts or {})
+        result.had_deleted_file = row.had_deleted_file
+        result.bytes_downloaded = row.bytes_downloaded
+        results.append(result)
+    return results
+
+
 @ingest_app.command("faers")
-def ingest_faers() -> None:
-    """Download FAERS quarterly extracts, parse both schema eras, and load cases."""
-    _owned_by("P02", "FAERS ingest")
+def ingest_faers(
+    from_quarter: Annotated[
+        str, typer.Option("--from", help="First quarter, for example 2012Q4.")
+    ] = "2012Q4",
+    to_quarter: Annotated[
+        str | None,
+        typer.Option("--to", help="Last quarter. Defaults to the newest one published."),
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="Re-ingest quarters already recorded as complete.")
+    ] = False,
+    keep_raw: Annotated[
+        bool,
+        typer.Option("--keep-raw", help="Leave downloaded files on disk. One quarter only."),
+    ] = False,
+    dedup: Annotated[
+        bool, typer.Option("--dedup/--no-dedup", help="Run corpus-wide deduplication afterwards.")
+    ] = True,
+) -> None:
+    """Download quarterly extracts, normalize them, and load Parquet and Postgres.
+
+    Processes one quarter at a time and deletes its raw files before fetching the
+    next, so peak disk stays at roughly one quarter regardless of range length.
+    Re-running is a no-op for quarters already completed.
+    """
+    _setup_django()
+    from signaldesk.ingest.faers import quality
+    from signaldesk.ingest.faers.dedup import persist, resolve_versions_across_quarters, stage2
+    from signaldesk.ingest.faers.discover import discover
+    from signaldesk.ingest.faers.pipeline import ingest_quarter
+    from signaldesk.ingest.faers.quarter import Quarter
+
+    if keep_raw:
+        log.warning(
+            "faers.keep_raw.enabled",
+            reason="raw files will not be deleted; use this for one quarter only",
+        )
+        typer.echo(
+            "WARNING: --keep-raw retains every downloaded quarter. "
+            "A full range this way needs well over a terabyte.",
+            err=True,
+        )
+
+    discovery = discover()
+    start = Quarter.parse(from_quarter)
+    end = Quarter.parse(to_quarter) if to_quarter else discovery.latest
+    quarters = Quarter.range(start, end)
+    typer.echo(f"{len(quarters)} quarter(s): {start} to {end}")
+
+    results = []
+    for quarter in quarters:
+        results.append(ingest_quarter(quarter, discovery, force=force, keep_raw=keep_raw))
+
+    stats = None
+    version_pairs: list[tuple[int, int]] = []
+    if dedup:
+        version_pairs = resolve_versions_across_quarters()
+        stats = stage2()
+        persist(stats, version_pairs)
+
+    report = quality.build_report(results, stats, version_pairs=len(version_pairs))
+    path = quality.write_report(report)
+    typer.echo(quality.render(report))
+    typer.echo(f"\nreport written to {path}")
+
+
+@ingest_app.command("faers-dedup")
+def ingest_faers_dedup(
+    from_quarter: Annotated[str | None, typer.Option("--from", help="First quarter.")] = None,
+    to_quarter: Annotated[str | None, typer.Option("--to", help="Last quarter.")] = None,
+) -> None:
+    """Deduplicate the loaded corpus.
+
+    Separate from ingest because it is inherently corpus-wide: the same case is
+    routinely re-reported under a different identifier in a later quarter, and a
+    per-quarter pass cannot see those pairs. Re-running rebuilds the duplicate
+    table rather than adding to it.
+    """
+    _setup_django()
+    from signaldesk.analytics import faers as analytics
+    from signaldesk.ingest.faers import quality
+    from signaldesk.ingest.faers.dedup import persist, resolve_versions_across_quarters, stage2
+    from signaldesk.ingest.faers.quarter import Quarter
+
+    start = Quarter.parse(from_quarter) if from_quarter else None
+    end = Quarter.parse(to_quarter) if to_quarter else None
+
+    version_pairs = resolve_versions_across_quarters()
+    stats = stage2(start=start, end=end)
+    rows = persist(stats, version_pairs)
+
+    # Write the report here rather than only from the ingest command: this pass
+    # is where the deduplication numbers are measured, and an artifact assembled
+    # anywhere else would be a transcription of them rather than a record.
+    report = quality.build_report(
+        _results_from_manifest(start, end),
+        stats,
+        version_pairs=len(version_pairs),
+        corpus=analytics.corpus_metrics(),
+    )
+    path = quality.write_report(report)
+
+    typer.echo(f"records considered:        {stats.records_considered:,}")
+    typer.echo(
+        f"excluded, null block key:  {stats.records_excluded_null_key:,} ({stats.excluded_share:.2%})"
+    )
+    typer.echo(f"blocks:                    {stats.blocks:,} (largest {stats.largest_block:,})")
+    typer.echo(
+        f"comparisons:               {stats.comparisons:,} (naive would be {stats.naive_comparisons:,})"
+    )
+    typer.echo(f"duplicate pairs:           {stats.duplicate_pairs:,}")
+    typer.echo(f"cross-quarter share:       {stats.cross_quarter_share:.2%}")
+    typer.echo(f"superseded across quarters:{len(version_pairs):,}")
+    typer.echo(f"rows written:              {rows:,}")
+    typer.echo(f"report written to {path}")
+
+
+@ingest_app.command("faers-status")
+def ingest_faers_status() -> None:
+    """Print the ingest manifest: what is loaded, what failed, what is missing."""
+    _setup_django()
+    from signaldesk.web.signals.models import IngestManifest
+
+    rows = IngestManifest.objects.filter(source="faers").order_by("unit")
+    if not rows:
+        typer.echo("nothing ingested yet")
+        return
+
+    typer.echo(f"{'quarter':<9} {'status':<10} {'cases':>10} {'rows':>12} {'MB':>7}  checksum")
+    for row in rows:
+        cases = row.row_counts.get("case", 0) if isinstance(row.row_counts, dict) else 0
+        typer.echo(
+            f"{row.unit:<9} {row.status:<10} {cases:>10,} {row.row_count:>12,} "
+            f"{row.bytes_downloaded / 1e6:>7.1f}  {row.checksum[:12]}"
+        )
+    typer.echo(f"\n{rows.count()} quarter(s) recorded")
+
+
+@ingest_app.command("faers-quality")
+def ingest_faers_quality(
+    from_quarter: Annotated[str | None, typer.Option("--from", help="First quarter.")] = None,
+    to_quarter: Annotated[str | None, typer.Option("--to", help="Last quarter.")] = None,
+    recompute: Annotated[
+        bool,
+        typer.Option(
+            "--recompute",
+            help="Run deduplication again instead of using stored results. Takes about an hour.",
+        ),
+    ] = False,
+) -> None:
+    """Write and print the quality report for what is loaded.
+
+    Uses the last recorded pass, or the stored corpus and duplicate table, so
+    the report is a fast rebuild rather than an hour of recomputation. Pass
+    --recompute to measure again; figures only a pass can produce are reported
+    as unavailable otherwise.
+    """
+    _setup_django()
+    from signaldesk.analytics import faers as analytics
+    from signaldesk.ingest.faers import quality
+    from signaldesk.ingest.faers.dedup import (
+        load_stats,
+        resolve_versions_across_quarters,
+        save_stats,
+        stage2,
+        stats_from_store,
+    )
+    from signaldesk.ingest.faers.quarter import Quarter
+
+    start = Quarter.parse(from_quarter) if from_quarter else None
+    end = Quarter.parse(to_quarter) if to_quarter else None
+
+    results = _results_from_manifest(start, end)
+    # Reuse the last pass rather than repeating an hour of comparison; only
+    # recompute when no pass has been recorded, and record it when we do.
+    if recompute:
+        stats = stage2(start=start, end=end)
+        save_stats(stats)
+    else:
+        stats = load_stats() or stats_from_store()
+    report = quality.build_report(
+        results,
+        stats,
+        version_pairs=len(resolve_versions_across_quarters()),
+        corpus=analytics.corpus_metrics(),
+    )
+    path = quality.write_report(report)
+    typer.echo(quality.render(report))
+    typer.echo(f"\nreport written to {path}")
 
 
 @ingest_app.command("labels")

@@ -61,10 +61,22 @@ MAX_RETRY_AFTER_SECONDS: Final[float] = 60.0
 CACHE_HEADER: Final[str] = "x-signaldesk-cache"
 
 
-def build_client(settings: Settings | None = None, *, base_url: str = "") -> httpx.Client:
-    """Create the shared client. Callers own closing it, or use ``request``."""
+def build_client(
+    settings: Settings | None = None,
+    *,
+    base_url: str = "",
+    timeout: httpx.Timeout | None = None,
+) -> httpx.Client:
+    """Create the shared client. Callers own closing it, or use ``request``.
+
+    ``timeout`` overrides the defaults for a source that is known to be slow.
+    Bulk data hosts can take minutes to begin a response, and a caller fetching
+    one is not the same as a caller hitting a REST API. The override exists so
+    that such a caller stays on this factory rather than building its own client
+    without the retry, cache and user-agent policy attached.
+    """
     settings = settings or get_settings()
-    timeout = httpx.Timeout(
+    timeout = timeout or httpx.Timeout(
         connect=CONNECT_TIMEOUT_SECONDS,
         read=READ_TIMEOUT_SECONDS,
         write=WRITE_TIMEOUT_SECONDS,
