@@ -30,12 +30,20 @@ NLM's terms of service, quoted from the page:
 > APIs (RxNorm, RxTerms, Prescribable RxNorm, and RxClass) send **no more than 20
 > requests per second** per IP address.
 
-At exactly that ceiling, 538,917 approximate calls take 7.5 hours before any
-ingredient resolution. Measured latency from the probe is 0.53 s warm for
-`approximateTerm`, so a single-threaded pass is nearer 80 hours; reaching the
-ceiling needs about ten concurrent connections held for the whole run. Neither
-figure is inside the four-hour gate this project sets for a pipeline stage, and
-concurrency cannot be raised past the published limit to close the gap.
+Requests per string is measured rather than assumed. Fifteen strings drawn from
+the corpus by row count, run through the real matcher against the real endpoint,
+cost **2.07 requests each**: an exact-name lookup plus one ingredient resolution
+for most, four for a two-component combination, and zero for
+`HUMIRA 40 MG/0.8 ML PEN`, which cleans to a query already cached. Fourteen of the
+fifteen were answered by the exact rung.
+
+At 2.07 requests per string, 538,917 strings is about **1.12 million requests, or
+15.5 hours** at the published ceiling. Measured latency is 0.53 s warm, so a
+single-threaded pass is nearer 160 hours; reaching the ceiling needs about ten
+concurrent connections held for the whole run. An earlier draft quoted 7.5 hours,
+which counted the approximate calls alone and therefore about half the work.
+Neither figure is inside the four-hour gate this project sets for a pipeline
+stage, and concurrency cannot be raised past the published limit to close the gap.
 
 The same terms page names the answer:
 
@@ -109,28 +117,76 @@ the same one request. It also means P03 cannot report a coverage figure for days
 
 Three options, not two, and the trade is no longer capability against convenience:
 
-| | Approximate matching | Rate limit | Disk | Time to first figure |
+| | Approximate matching | Rate limit | Local disk | Time to first figure |
 |---|---|---|---|---|
-| A. RxNav-in-a-Box | yes | none | 100 GB | ~1 h import, then fast |
+| A. RxNav-in-a-Box | yes | none | 100 GB, one-time | ~1 h import, then fast |
 | B. Release files | no | none | small | fast, but semantics change |
-| C. Stay on the API | yes | 20/s | none | days, once |
+| C. Stay on the API | yes | 20/s | 1.1 GB of cache | 15.5 h, once |
 
 A and C differ in resources and elapsed time, not in what they can compute. B is
 the only one that changes the answer, and it is therefore the one that needs the
 strongest justification rather than the weakest.
 
+## The reproducibility argument does not survive its own measurement
+
+An earlier draft weighed a property in option C's favour: a cold clone reproduces
+the pipeline from the committed cache with no account anywhere. That property was
+asserted at fixture scale and never checked at corpus scale, so it was measured.
+
+The same fifteen-string run wrote 31 cache entries totalling 31,568 bytes, a mean
+of 1,018 bytes per entry and **2,105 bytes per string**. Projected across the
+corpus:
+
+| | Entries | On disk |
+|---|---|---|
+| Minimum, 538,917 strings | ~1.12 M | **1.06 GiB** |
+| Upper, 656,589 strings | ~1.36 M | **1.29 GiB** |
+
+**That is not committable.** Not because of raw size alone - a `tar | gzip` of the
+sample compresses about six to one, so the archive might land in the low hundreds
+of megabytes - but because it is over a million small files in a repository whose
+entire tracked content is currently under a megabyte, and because the rule against
+committing downloaded data covers exactly this.
+
+So the reproducibility property has **already lapsed at full scale, under every
+option**. A cold clone cannot reproduce a full-corpus normalization from anything
+committed here today. What that changes:
+
+- Option C's advantage was never "reproducible for anyone", it was "no credential
+  needed for the person who runs it", and that person pays 15.5 hours once.
+- Option A's 100 GB stops being a standing requirement on anyone reproducing the
+  work and becomes a **one-time local cost to populate a cache**, paid by the same
+  single person, on the same single machine. It buys back the 15.5 hours and the
+  dependency on NLM's uptime.
+
+The comparison is therefore between two one-time local costs, not between a
+portable option and an unportable one.
+
+**Distribution plan for the cache, whichever option wins.** The fixture-scale
+slice stays committed so CI keeps running with no network and no API keys, exactly
+as it does now. The full-corpus cache is local state, listed alongside the other
+uncommitted artifacts in `docs/data-sources.md`, and the coverage report records
+the entry count and byte size so its absence is visible rather than silent. No
+plan here involves committing it or hosting it.
+
 ## What remains to be established
 
+- **Whether the RxNorm service can be deployed alone.** The 100 GB and 12 GB
+  figures cover the whole composition: RxNav, RxClass and RxMix as applications
+  plus four APIs. Only the RxNorm API is needed here. NLM publishes no per-service
+  breakdown, and the README offers only "you may take the included
+  docker-compose.yml file as an example", which implies the services are separable
+  without saying what a subset costs. Establishing it requires downloading the
+  distribution, which requires the licence agreement, so it is a precondition of
+  adopting A rather than an input available now. **If a RxNorm-only subset is
+  materially smaller, the disk objection to A largely dissolves.**
 - **Licensing.** A and B both need a UMLS account and license agreement, free of
   charge, so the zero-cost constraint holds either way. A's "individual, personal
   use" framing should be read against this being a public portfolio repository:
   the artifact is not redistributed, but the point is worth a deliberate reading
   rather than an assumption.
-- **Reproducibility.** Today a cold clone reproduces the pipeline from the
-  committed cache and fixtures with no account anywhere. A and B both introduce a
-  credentialed download, and neither artifact can be committed. CI runs with no
-  API keys, so the fixture-scale path must keep working against a mock whichever
-  option wins.
+- **CI.** Runs with no API keys under every option, so the fixture-scale path must
+  keep working against a mock whichever one wins.
 
 ## Decision
 

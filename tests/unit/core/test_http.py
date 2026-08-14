@@ -7,6 +7,7 @@ injected as a no-op: the tests assert the schedule, not the wall clock.
 
 from __future__ import annotations
 
+import gzip
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
@@ -180,3 +181,32 @@ def test_corrupt_cache_entry_is_treated_as_a_miss(settings: Settings) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{ not json", encoding="utf-8")
     assert cache.load(key) is None
+
+
+@respx.mock
+def test_a_compressed_response_survives_the_cache(settings: Settings) -> None:
+    """The cache stores decoded bytes, so it must not keep the encoding header.
+
+    RxNav compresses. Storing `Content-Encoding: gzip` beside an already-decoded
+    body made the replay try to gunzip plain JSON and raise `DecodingError`, so
+    the second pass over half a million lookups failed rather than being free.
+    The FAERS host is asked for `identity` and mocked responses carry no encoding
+    header, which is why nothing caught it until a real compressed endpoint.
+    """
+    body = b'{"idGroup": {"rxnormId": ["6851"]}}'
+    route = respx.get(URL).mock(
+        return_value=httpx.Response(
+            200,
+            content=gzip.compress(body),
+            headers={"Content-Encoding": "gzip", "Content-Type": "application/json"},
+        )
+    )
+
+    first = http.get(URL, settings=settings)
+    second = http.get(URL, settings=settings)
+
+    assert route.call_count == 1
+    assert second.headers[http.CACHE_HEADER] == "hit"
+    assert second.content == first.content == body
+    assert second.json() == {"idGroup": {"rxnormId": ["6851"]}}
+    assert "content-encoding" not in second.headers
