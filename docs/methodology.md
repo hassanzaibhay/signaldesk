@@ -181,13 +181,26 @@ The procedure, in the order it must happen:
 that keeps a case from being counted under both rules is one-sided: it discards a
 probabilistic match when the flagged record is superseded, not when the record it
 matched is. 98,376 stage 2 flags, 5.95 percent of the stage 2 numerator, name a
-canonical that stage 1 superseded. For 9,609 of those, 0.58 percent of the
-numerator, the version stage 1 kept could never have been compared against the
-flagged record - 7,202 because it blocks elsewhere, 2,407 because it has no
-complete blocking key - so nothing in the pass establishes that the flagged
-record duplicates anything remaining in the population. That is the over-merge
-direction this audit exists to bound, so the sample has to be able to draw these
-pairs; the skip does not resolve them.
+canonical that stage 1 superseded. For each of them the pass removed a record
+without establishing that it duplicates anything left in the population.
+
+**Unbacked removals are at least 9,609 and at most 98,376**, 0.58 to 5.95
+percent of the stage 2 numerator:
+
+- 9,609 are certain. The version stage 1 kept could never have been compared
+  against the flagged record at all - 7,202 because it blocks elsewhere, 2,407
+  because it has no complete blocking key.
+- The remaining 88,767 are unknown. The kept version was in the same block, so
+  the comparison was available, but the pass stores one canonical per record and
+  keeps no count of a record's other matches, so whether the two ever matched is
+  not recoverable from stored state.
+
+Availability is not a match, and unknown is not backed, so the upper end stands
+until something resolves it. The D2 audit is what resolves it: an annotator
+comparing a flagged record against the version stage 1 kept answers exactly the
+question the stored state cannot. That means these pairs have to be drawable in
+the sample rather than treated as settled by the skip, and they are in the
+over-merge direction the audit exists to bound.
 
 The tooling is built in the drug normalization prompt, alongside the stage 2
 re-run, so the audit and the re-run inform each other.
@@ -214,11 +227,33 @@ below that qualify the rate - the superseded share and the 16.74 percent - are
 computed on the pass's 11,544,512, because they describe what the pass did rather
 than what the rule covers.
 
-16,029,869 cases remain once everything flagged is removed. That count is
-provisional, because stage 2 is. Stage 1 at 13.89 percent is the only settled
-rate here, and there is no duplicate rate for this corpus that can be quoted on
-its own yet. One becomes reportable when the audit bounds the stage 2
-false-positive rate.
+**16,029,162 records remain once everything flagged is removed**, and that is a
+record count, not a count of surviving events. Both terms come from Postgres:
+20,534,506 distinct case identifiers less the 4,505,344 records the duplicate
+table flags. The committed report artifact prints 16,029,869 instead, because it
+subtracts the same Postgres flag count from the Parquet case total of
+20,535,213. Parquet holds one row per publication and Postgres one per case, a
+707-row gap recorded in ADR 0004, so the two cannot appear in one subtraction.
+Both terms come from Postgres once the report generator is changed with the rest
+of the deduplication fixes; the change is recorded in ADR 0005, and until it
+lands the figure to quote is the one stated here rather than the one in the
+artifact.
+
+The count is also provisional, because stage 2 is. Stage 1 at 13.89 percent is
+the only settled rate here, and there is no duplicate rate for this corpus that
+can be quoted on its own yet. One becomes reportable when the audit bounds the
+stage 2 false-positive rate.
+
+**38 case identifiers survive nowhere, which is a defect and not a property of
+the method.** Subtracting the flagged records treats every one of them as having
+a surviving representative elsewhere in the corpus. Resolving the canonical
+pointers shows 17 components in which every member is flagged and no pointer
+reaches an unflagged record: 57 records, 38 distinct case identifiers, removed
+outright rather than merged into a survivor. That is 57 records in 16,029,162,
+about 3.6 in a million, and the size is not the point - the events are absent
+from the corpus, and no rate computed here says so. The cause is a survivor
+tie-break that is not a total order, recorded in ADR 0005 and fixed in the
+re-run, which verifies afterwards that no such component remains.
 
 **Why the stage 2 rate is a lower bound.** Two mechanisms hold it down, and
 neither is a property of the data:

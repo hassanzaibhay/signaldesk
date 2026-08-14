@@ -154,6 +154,45 @@ fixed as part of the re-run rather than in the reporting pass that found them:
    flags naming a canonical stage 1 removed. Restricting the population per item
    1 removes the case, so this is a consequence to verify gone after the re-run
    rather than a separate fix.
+5. The survivor tie-break is not a total order. `_compare_block` keeps `left`
+   when `left.fda_dt >= right.fda_dt`, which on equal dates holds in both
+   directions, so the survivor is decided by argument position and therefore by
+   scoring order rather than by the data. It becomes `(fda_dt, primaryid)`,
+   which is antisymmetric and independent of the order pairs arrive in. See
+   below for what the current ordering produced.
+6. The quality report computes the surviving-record count by subtracting a
+   Postgres flag count from the Parquet case total, mixing the two stores across
+   a 707-row gap that ADR 0004 records. Both terms come from Postgres.
+
+### Seventeen components of the flag graph have no survivor
+
+Every flagged record carries exactly one canonical, so the flags form a
+functional graph and the surviving corpus is the set of records no flag names as
+a duplicate. Subtracting the flag count from the corpus size assumes every chain
+of canonical pointers ends at an unflagged record.
+
+Resolving all 4,505,344 pointers, 4,505,287 do. The remaining 57 do not: 17
+connected components in which every member is flagged, each containing a cycle
+of length 3, covering 38 distinct case identifiers. Those cases are removed from
+the corpus outright rather than merged into a survivor, and no rate reported
+anywhere says so.
+
+The mechanism is item 5 above meeting stage 1. In 14 of the 17 components every
+member shares one `fda_dt`, so the stage 2 direction was decided by scoring
+order; stage 1's direction is decided by `caseversion`. Two orderings that need
+not agree, in one pointer graph, close a loop:
+
+```
+101596041 -max_caseversion-> 101596042    case 10159604 v1 -> v2
+101596042 -probabilistic--> 101596061     all three fda_dt 2014-05-08
+101596061 -probabilistic--> 101596041
+```
+
+Item 1 removes the paths that run through stage 1, but a cycle confined to
+stage 2 stays reachable while the tie-break is what it is, which is why item 5
+is a fix in its own right rather than a consequence of item 1. The re-run
+therefore verifies zero cycles and zero fully-flagged components as an
+acceptance condition, rather than assuming the population change resolved it.
 
 ### Candidate rules, to be chosen after the audit and not before
 
