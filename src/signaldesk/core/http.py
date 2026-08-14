@@ -143,6 +143,23 @@ class ResponseCache:
         path.write_text(json.dumps(payload), encoding="utf-8")
 
 
+def is_cached(
+    url: str,
+    *,
+    params: Mapping[str, str] | None = None,
+    settings: Settings | None = None,
+) -> bool:
+    """Whether a GET would be answered from disk without touching the network.
+
+    Callers that rate-limit themselves need this: a limiter placed in front of
+    `get` throttles cache hits as well as requests, which turns a warm re-run
+    over half a million cached lookups into hours of sleeping for nothing.
+    """
+    settings = settings or get_settings()
+    cache = ResponseCache(settings.http_cache_dir)
+    return cache.path_for(ResponseCache.key("GET", url, params)).is_file()
+
+
 def retry_after_seconds(response: httpx.Response) -> float | None:
     """Parse ``Retry-After``, which is either a delay in seconds or an HTTP date."""
     raw = response.headers.get("Retry-After")
