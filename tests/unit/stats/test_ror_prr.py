@@ -110,3 +110,35 @@ def test_rows_without_a_zero_cell_are_not_corrected() -> None:
 
     assert not bool(result.corrected[0])
     assert float(result.ror[0]) == pytest.approx((25 * 97000) / (1975 * 1000), rel=1e-12)
+
+
+def test_a_non_default_alpha_widens_the_interval() -> None:
+    """The interval level is a parameter for sensitivity runs, so it has to work.
+
+    The signal table is always built at the locked 0.05, which takes a fast path
+    with a hardcoded quantile. This is the other branch.
+    """
+    table = Contingency(
+        a=np.array([25], dtype=np.int64),
+        b=np.array([1975], dtype=np.int64),
+        c=np.array([1000], dtype=np.int64),
+        d=np.array([97000], dtype=np.int64),
+    )
+    ninety_five = reporting_odds_ratio(table)
+    ninety_nine = reporting_odds_ratio(table, alpha=0.01)
+
+    assert float(ninety_nine.ror[0]) == pytest.approx(float(ninety_five.ror[0]), rel=1e-12)
+    assert float(ninety_nine.ror_lower[0]) < float(ninety_five.ror_lower[0])
+    assert float(ninety_nine.ror_upper[0]) > float(ninety_five.ror_upper[0])
+
+
+@pytest.mark.parametrize("alpha", [0.0, 1.0, -0.1, 1.5])
+def test_an_alpha_outside_the_unit_interval_is_refused(alpha: float) -> None:
+    table = Contingency(
+        a=np.array([25], dtype=np.int64),
+        b=np.array([1975], dtype=np.int64),
+        c=np.array([1000], dtype=np.int64),
+        d=np.array([97000], dtype=np.int64),
+    )
+    with pytest.raises(ValueError, match="alpha must lie"):
+        reporting_odds_ratio(table, alpha=alpha)

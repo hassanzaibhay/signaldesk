@@ -138,3 +138,64 @@ def test_the_spec_travels_with_the_result(corpus: Settings) -> None:
     assert params["drug_key"] == "raw_string"
     assert params["role_codes"] == "PS"
     assert params["min_a"] == 1
+
+
+def test_the_signal_build_writes_scored_rows_and_its_own_provenance(corpus: Settings) -> None:
+    """The whole entry point, over the fixture slice.
+
+    Otherwise this path is only ever exercised by a seven-minute corpus run,
+    which is not a place to discover that the record does not round-trip.
+    """
+    import polars as pl
+
+    from signaldesk.analytics.signals import (
+        build as build_signals,
+    )
+    from signaldesk.analytics.signals import (
+        latest_run,
+        read_record,
+        read_run,
+    )
+
+    spec = ContingencySpec(drug_key=DrugKey.RAW_STRING, min_a=3)
+    record, partition = build_signals(spec, corpus)
+
+    assert partition.exists()
+    assert latest_run(corpus) == record.run_id
+
+    frame = read_run(record.run_id, corpus)
+    assert isinstance(frame, pl.DataFrame)
+    assert frame.height == record.pairs_observed
+    assert set(frame["run_id"].unique().to_list()) == {record.run_id}
+
+    for column in ("a", "b", "c", "d", "ror", "prr", "chi2", "ic", "ic025", "ebgm05"):
+        assert column in frame.columns
+
+    # Every row's cells sum to the background, all the way through the build.
+    totals = (
+        frame.select(pl.col("a") + pl.col("b") + pl.col("c") + pl.col("d")).to_series().unique()
+    )
+    assert totals.to_list() == [record.n_cases]
+
+    stored = read_record(record.run_id, corpus)
+    assert stored["run_id"] == record.run_id
+    assert stored["population"]["deduplicated_cases"] == record.n_cases
+    assert stored["params"]["drug_key"] == "raw_string"
+    assert "provisional" in stored["mgps"]
+
+
+def test_a_second_build_does_not_overwrite_the_first(corpus: Settings) -> None:
+    """Runs are immutable. A quoted number must stay traceable to its own run."""
+    from signaldesk.analytics.signals import build as build_signals
+    from signaldesk.analytics.signals import signal_root
+
+    spec = ContingencySpec(drug_key=DrugKey.RAW_STRING, min_a=3)
+    first, _ = build_signals(spec, corpus)
+    second, _ = build_signals(
+        ContingencySpec(drug_key=DrugKey.RAW_STRING, roles=RoleFilter.PS, min_a=3), corpus
+    )
+
+    runs = {path.name for path in signal_root(corpus).iterdir() if path.is_dir()}
+    assert f"run={first.run_id}" in runs
+    if first.run_id != second.run_id:
+        assert f"run={second.run_id}" in runs
