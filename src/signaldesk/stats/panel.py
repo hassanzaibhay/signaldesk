@@ -36,22 +36,35 @@ def estimate_all(
     *,
     min_a: int = MIN_CELL_A,
     hyperparameters: MgpsHyperparameters | None = None,
+    mgps_allow_boundary: bool = False,
 ) -> EstimatorPanel:
     """Run all four estimators and apply the locked thresholds.
 
     Pairs below ``min_a`` are computed rather than skipped, and marked
     ``insufficient``. Dropping them here would remove them from the denominator
     of every rate reported downstream while leaving nothing to say they existed.
+
+    ``mgps_allow_boundary`` accepts a gamma mixture fit that sits on a bound
+    rather than raising. ``panel.mgps_provisional`` is then true, and with it
+    ``flag_all_four`` is **not** computed: a conservative four-method count built
+    on a prior that is an artefact of the feasible region would be a headline
+    number resting on an unvalidated one. ``flag_three_of_four`` is what such a
+    run can report.
     """
     ror_result = ror.reporting_odds_ratio(table)
     prr_result = prr.proportional_reporting_ratio(table)
     bcpnn_result = bcpnn.information_component(table)
-    mgps_result = mgps.gamma_poisson_shrinker(table, hyperparameters=hyperparameters)
+    mgps_result = mgps.gamma_poisson_shrinker(
+        table, hyperparameters=hyperparameters, allow_boundary=mgps_allow_boundary
+    )
 
     flag_ror = ror.flag(table, ror_result, min_a=min_a)
     flag_prr = prr.flag(prr_result)
     flag_bcpnn = bcpnn.flag(bcpnn_result)
     flag_mgps = mgps.flag(mgps_result)
+    flag_three = flag_ror & flag_prr & flag_bcpnn
+
+    provisional = mgps_result.hyperparameters.provisional
 
     return EstimatorPanel(
         contingency=table,
@@ -63,6 +76,8 @@ def estimate_all(
         flag_prr=flag_prr,
         flag_bcpnn=flag_bcpnn,
         flag_mgps=flag_mgps,
-        flag_all_four=flag_ror & flag_prr & flag_bcpnn & flag_mgps,
+        flag_three_of_four=flag_three,
+        flag_all_four=None if provisional else flag_three & flag_mgps,
+        mgps_provisional=provisional,
         insufficient=np.asarray(table.a < min_a, dtype=np.bool_),
     )

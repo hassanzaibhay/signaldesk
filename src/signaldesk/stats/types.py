@@ -125,18 +125,21 @@ class PrrResult:
 class BcpnnResult:
     """Information component, with the posterior it was drawn from.
 
-    ``ic`` is the closed form locked in ARCHITECTURE section 8.2 and ``ic025``
-    its ``ic - 2*sd`` lower bound. ``ic_posterior_mean`` and ``ic025_exact`` are
-    the exact posterior mean and its 2.5th percentile under the same prior,
-    which is what the published reference implementation reports. Both are
-    carried because they differ at small counts and the difference is worth
-    seeing rather than choosing between silently.
+    ``ic`` is the posterior mean under the Bate (1998) prior and ``ic025`` its
+    ``ic - 2*sd`` lower bound, per the ARCHITECTURE 8.2 amendment of 2026-08-15.
+    ``ic025_exact`` is the posterior's own 2.5th percentile, which differs only
+    by the ``2`` against ``1.96`` multiplier.
+
+    ``ic_observed_expected`` is the unshrunk ``log2(N*a/((a+b)(a+c)))`` that the
+    section previously specified. It is carried so the divergence between a
+    shrunk and an unshrunk statistic stays visible on every row rather than
+    being resolved out of sight.
     """
 
     ic: FloatArray
     ic025: FloatArray
     ic_variance: FloatArray
-    ic_posterior_mean: FloatArray
+    ic_observed_expected: FloatArray
     ic025_exact: FloatArray
 
 
@@ -157,8 +160,20 @@ class MgpsHyperparameters:
     neg_log_likelihood: float
     #: Optimizer iterations actually taken.
     iterations: int
-    #: Pairs the fit was performed on.
+    #: Pairs in the table the prior was fitted from.
     n_pairs: int
+    #: Rows the likelihood was actually evaluated on. Smaller than ``n_pairs``
+    #: when the table was squashed into weighted representative points.
+    n_fitted_rows: int = 0
+    #: Parameters sitting on a bound at the optimum. Empty for a clean interior
+    #: fit. Non-empty means the fit was accepted under ``allow_boundary`` and
+    #: every score derived from it is provisional.
+    on_boundary: tuple[str, ...] = ()
+
+    @property
+    def provisional(self) -> bool:
+        """Whether scores from this prior may be quoted as measurements."""
+        return bool(self.on_boundary)
 
     def as_tuple(self) -> tuple[float, float, float, float, float]:
         """Parameters in the order the likelihood and posterior functions want."""
@@ -191,7 +206,16 @@ class EstimatorPanel:
     flag_prr: BoolArray
     flag_bcpnn: BoolArray
     flag_mgps: BoolArray
-    flag_all_four: BoolArray
+    #: ROR, PRR and BCPNN together. Reportable whatever MGPS did.
+    flag_three_of_four: BoolArray
+    #: The conservative definition, or ``None`` when the MGPS prior is
+    #: provisional. ``None`` rather than an array of ``False``: absent and
+    #: negative are different answers, and a column of ``False`` would be
+    #: counted as "no pair met all four" by anything that consumed it.
+    flag_all_four: BoolArray | None
+    #: The gamma mixture prior sat on a bound. Every EBGM and EBGM05 on this
+    #: panel is provisional and must not be quoted as a measurement.
+    mgps_provisional: bool
     #: ``a`` below the minimum cell count. Computed, reported, but excluded from
     #: headline counts rather than dropped, so the denominator stays visible.
     insufficient: BoolArray

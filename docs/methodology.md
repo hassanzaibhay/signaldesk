@@ -413,3 +413,235 @@ agreement, so the sparse subset should match *more*, not less. If it does, the
 lever is a minimum-evidence rule - requiring more than one distinct drug or
 reaction before a probabilistic match is allowed - rather than a threshold
 change.
+
+## Disproportionality
+
+Four estimators over the same 2x2 table, per (drug, MedDRA PT) pair:
+
+```
+            PT present    PT absent
+drug            a             b
+not drug        c             d
+```
+
+The unit is the deduplicated case, and `a + b + c + d` is the whole
+deduplicated population for every row. That identity is asserted on every row
+the builder emits. If a marginal were counted over one population and the
+background over another, every cell would still be non-negative and every
+estimator would still return a number; the sum is the only thing that shows it.
+
+A case naming three drugs and two terms contributes six pairs. It is counted
+once in cell `a` of each of those six, and once in the background of every pair
+in the table. That is what the table means, not double counting.
+
+### What was checked against what
+
+Every estimator is validated against an unmodified published implementation,
+not against a table worked out alongside the code. The generator script and its
+output are committed under `tests/fixtures/estimators/`.
+
+| Quantity | Reference | Agreement |
+|---|---|---|
+| ROR, and both 95% limits | `epitools::oddsratio.wald` 0.5.10.1 | 1e-8 |
+| PRR, and both 95% limits | `epitools::riskratio.wald` 0.5.10.1 | 1e-8 |
+| chi-squared, Yates corrected | R 4.4.1 `stats::chisq.test` | 1e-8 |
+| IC posterior mean and variance | `PhViD::BCPNN` 1.0.8 | 1e-9 |
+| IC 2.5th percentile | `PhViD::BCPNN` 1.0.8 | 1e-9 |
+| MGPS likelihood, weighted | `openEBGM::negLLsquash` 0.9.1 | 1e-10 |
+| MGPS likelihood, unweighted | `openEBGM::negLL` 0.9.1 | 1e-10 |
+| MGPS hyperparameter fit | `openEBGM::autoHyper` 0.9.1 | 1e-3 |
+| Qn, EBGM, EBGM05 | `openEBGM` 0.9.1 | 1e-6 |
+
+### The minimum cell count is a flag, not a filter
+
+`a >= 3` decides which pairs enter the headline counts. It does not decide which
+pairs are computed or written. Two independent reasons:
+
+* a pair filtered out here disappears from the denominator of every rate
+  reported downstream, with nothing left to say it existed;
+* MGPS fits its prior on the distribution of counts across the whole table.
+  Handing it only pairs with three or more cases removes exactly the low-count
+  mass the first mixture component exists to describe. Measured on the openEBGM
+  CAERS data, that truncation moves the second component's shape from 2.15 to
+  316 and the mixture weight from 0.07 to 0.75. The optimizer converges and
+  reports success; the prior is simply no longer the one the data implies.
+
+### Haldane-Anscombe: where it applies, and where it must not
+
+Add 0.5 to every cell of a row that has an empty cell, so the ratio estimators
+stay finite. Applied per row and never unconditionally: applied to every row it
+would pull the whole table toward the null by an amount that grows as counts
+shrink. The `corrected` column records which rows were adjusted.
+
+It reaches the ROR and PRR point estimates and their intervals. It does **not**
+reach:
+
+* **the chi-squared**, because the Yates continuity correction is already the
+  small-cell adjustment for that statistic. Applying both shrinks the same
+  deviation twice and depresses chi2 exactly where the `chi2 >= 4` threshold
+  decides;
+* **BCPNN and MGPS**, because both are Bayesian and already shrink small counts.
+  A pseudo-count on top would shrink twice.
+
+### BCPNN: the prior, and what is reported
+
+Bate et al. (1998). Independent Beta priors on the three probabilities the
+information component is built from, with conjugate posteriors:
+
+| Quantity | Posterior |
+|---|---|
+| `p(drug)` | `Beta(1 + n1., 1 + N - n1.)` |
+| `p(event)` | `Beta(1 + n.1, 1 + N - n.1)` |
+| `p(drug, event)` | `Beta(1 + a, g - 1 + N - a)` |
+
+A uniform prior on each marginal, worth one prior case each way. `g` is not
+free: it is fixed by requiring the prior to be centred on independence,
+`E[p(drug, event)] = E[p(drug)] E[p(event)]`, giving
+`g = (N + 2)^2 / ((n1. + 1)(n.1 + 1))`.
+
+`IC` is a sum of three independent log-Beta variables, so with
+`E[ln X] = psi(u) - psi(u+v)` and `Var[ln X] = psi'(u) - psi'(u+v)` for
+`X ~ Beta(u, v)`, the mean divides by `ln 2` once and the three variances add
+and divide by `ln 2` squared. The derivation was checked against
+`PhViD::BCPNN`, whose `r2b = N - n11 - 1 + (2+N)^2/(q1*p1)` is `g - 1 + N - a`
+written out.
+
+**The reported `IC` is the posterior mean.** ARCHITECTURE section 8.2
+originally specified the closed form `log2(N*a / ((a+b)(a+c)))` with
+`IC025 = IC - 2*sqrt(V)`, and was amended on 2026-08-15. That pairing put a
+shrunk variance under an unshrunk point estimate, which makes `IC025` least
+conservative exactly where the evidence is thinnest. `g` scales as `1/E`, so
+what drives the divergence is the expected count, not the observed one:
+
+| `a` | `E` | posterior mean | observed/expected | difference |
+|---|---|---|---|---|
+| 5000 | 577.5 | 3.112 | 3.114 | 0.002 |
+| 25 | 20.5 | 0.245 | 0.286 | 0.041 |
+| 100 | 0.400 | 6.169 | 7.966 | 1.797 |
+| 4 | 0.00024 | 2.268 | 14.025 | 11.757 |
+
+On the last row the amended `IC025` is 0.54 where the previous definition gave
+12.30, against an exact posterior 2.5th percentile of 0.58. The remaining 0.03
+is the `2` against `1.96` multiplier and nothing else.
+
+The unshrunk closed form is kept as `ic_observed_expected` so the divergence
+stays visible on every row. It is negative infinity at `a = 0`, where the
+posterior mean is finite; the builder never emits such a pair.
+
+`IC` rises with `a` only while `a` stays small beside `b` and `c`. The
+derivative of the closed form is `1/N + 1/a - 1/(a+b) - 1/(a+c)`, and `a`
+appears in `N` and in both marginals, so once `a` rivals its margins a further
+co-report enlarges the expectation faster than the observation.
+`a=2,b=1,c=1,d=2` gives 0.415 and `a=3,b=1,c=1,d=2` gives 0.392. A large
+background does not rescue it: `a=1,b=1,c=1,d=10^7` and `a=2,b=1,c=1,d=10^7`
+decrease too. This never arises on FAERS, where both marginals are in the
+millions.
+
+### MGPS
+
+DuMouchel (1999), with the estimation refinements of DuMouchel and Pregibon
+(2001). `N ~ Poisson(E * lambda)` with `lambda` drawn from a two-component gamma
+mixture fitted over the whole table by maximum likelihood.
+
+Only pairs reported at least once exist in the table, so the likelihood
+conditions on `N >= 1`. Each component is truncated separately and the truncated
+components are then mixed, which is the ordering in `openEBGM::negLL` and is
+what the published estimates are conditioned on.
+
+**Data squashing.** The full FAERS table is 8,583,614 pairs and a direct fit
+does not finish in usable time. Squashing groups pairs that differ only slightly
+in `(N, E)`: within a count stratum, the ten pairs with the largest expected
+counts are carried individually because they hold the tail information the two
+components differ in, and the rest are sorted by `E` and binned in groups of
+300, each bin contributing its mean `E` with a weight equal to the number of
+pairs it stands for.
+
+A stratum is squashed only if it would still yield at least 50 bins. That guard
+is the whole safety of the procedure and it was measured, not assumed. On the
+openEBGM CAERS table:
+
+| Squashed | Rows fitted | alpha1 | Largest relative error |
+|---|---|---|---|
+| N=1 only, the 16,040-pair stratum | 1,213 of 17,189 | 2.9407 | 0.29% |
+| also N=2, a 710-pair stratum | 516 | 22.81 | 676% |
+| every stratum, unguarded | 197 | 8.02 | 469% |
+
+Squashing a large stratum is very nearly lossless. Squashing a small one
+destroys the fit while still converging and reporting success.
+
+**Failure.** A fit that does not converge raises. It never falls back to the raw
+observed-to-expected ratio and never returns NaN. A fit whose optimum sits on a
+parameter bound also raises by default, because a pinned parameter means the
+likelihood wanted to leave the feasible region and the reported value is an
+artefact of the box. A caller may accept such a fit explicitly, and the run then
+records which parameters are pinned and marks every EBGM and EBGM05 derived from
+it provisional.
+
+### The MGPS boundary on this corpus, and why EBGM is not reported
+
+On the full corpus the fit reaches the lower bound on `alpha1`. That is refused
+by default, so the question had to be settled before any EBGM number could be
+written: is the bound the genuine optimum for this data shape, or a defective
+likelihood?
+
+Settled by profile likelihood, not by refitting from more start points. `alpha1`
+was fixed on a grid and the remaining four parameters refitted at each point,
+over 497,975 squashed rows standing for 8,583,614 pairs:
+
+| `alpha1` | negative log-likelihood | excess over the minimum |
+|---|---|---|
+| 1e-06 | 16,580,220.18 | 0 |
+| 1e-05 | 16,580,224.58 | 4 |
+| 1e-04 | 16,580,268.56 | 48 |
+| 1e-03 | 16,580,708.15 | 488 |
+| 1e-02 | 16,585,080.77 | 4,861 |
+| 0.05 | 16,633,494.65 | 53,274 |
+| 0.1 | 16,626,118.68 | 45,898 |
+| 0.2 | 16,665,094.00 | 84,874 |
+| 0.5 | 16,743,082.52 | 162,862 |
+| 1.0 | 16,810,479.98 | 230,260 |
+| 2.0 | 16,893,696.20 | 313,476 |
+| 3.0 | 16,951,722.56 | 371,502 |
+
+Monotone decreasing toward the bound, flattening as it approaches. No interior
+minimum. A zero-truncated negative binomial tends to the logarithmic
+distribution as its shape goes to zero, and that is a legitimate limit for a
+table where 68 percent of pairs are reported exactly once. The bound is the
+optimum, not an optimizer failure.
+
+One irregularity, recorded rather than smoothed: `alpha1 = 0.05` sits 7,376 nats
+above `alpha1 = 0.1`. Both are 45,000 to 53,000 nats above the boundary value,
+so it is a nested-refit local optimum at that grid point, not an interior
+minimum.
+
+**That does not make EBGM reportable.** The remaining question is whether the
+scores depend on the answer. Rescoring all 8,583,614 pairs at each profile point,
+over the 2,785,896 pairs at or above the minimum cell count:
+
+| `alpha1` | flagged, EBGM05 > 2 | median | 90th pct | 99th pct |
+|---|---|---|---|---|
+| 1e-06 | 1,133,087 | 1.3804 | 10.3961 | 499.5705 |
+| 1e-03 | 1,134,008 | 1.3810 | 17.4020 | 507.2114 |
+| 1e-02 | 1,141,400 | 1.3867 | 28.6227 | 507.3675 |
+| 0.1 | 1,174,919 | 1.4237 | 33.1267 | 510.0410 |
+| 1.0 | 1,379,260 | 1.9547 | 41.2583 | 531.6345 |
+
+The flagged count spans 1,133,087 to 1,379,260, a 17.9 percent relative spread,
+and the 90th percentile moves fourfold. Which `alpha1` is believed changes the
+reported signal count by about 246,000 pairs.
+
+So the boundary reading is load-bearing. The profile makes `alpha1` at its bound
+the defensible choice and 1,133,087 the defensible count, but that rests on
+accepting the logarithmic limit as a prior rather than as a degeneracy, and that
+is a judgement rather than something the likelihood settles. Until it is made:
+EBGM and EBGM05 are written to the signal table and are **not** measurements,
+`flag_all_four` is null rather than false, and `flag_three_of_four` over ROR,
+PRR and BCPNN is what these runs support.
+
+### Reference-set validation
+
+Not yet performed. `evals/reference_sets/` is empty: the Harpaz, OMOP and EU-ADR
+standards and the outcome-to-MedDRA-PT map are curated by hand and are never
+generated by this project. `signaldesk evals run signals` refuses and names each
+required file and its schema. No AUROC, sensitivity or specificity appears
+anywhere until those files exist.

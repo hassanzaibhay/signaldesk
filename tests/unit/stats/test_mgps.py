@@ -23,6 +23,8 @@ from signaldesk.stats.mgps import (
     negative_log_likelihood,
     posterior_geometric_mean,
     posterior_percentile,
+    profile_likelihood,
+    squash,
 )
 from signaldesk.stats.types import Contingency, MgpsHyperparameters
 
@@ -232,3 +234,164 @@ def test_a_fit_that_cannot_move_off_its_bound_raises() -> None:
     expected = np.ones(50, dtype=np.float64)
     with pytest.raises(EstimatorConvergenceError):
         fit_hyperparameters(count, expected)
+
+
+def test_boundary_fit_is_returned_only_when_explicitly_allowed() -> None:
+    """The opt-in must record which parameters are pinned, not merely permit them.
+
+    ``on_boundary`` is what lets a caller mark the resulting scores provisional.
+    A fit accepted without it recorded would be indistinguishable from a clean
+    one at every point downstream.
+    """
+    count = np.ones(50, dtype=np.float64)
+    expected = np.ones(50, dtype=np.float64)
+
+    with pytest.raises(EstimatorConvergenceError, match="allow_boundary"):
+        fit_hyperparameters(count, expected)
+
+    fitted = fit_hyperparameters(count, expected, allow_boundary=True)
+
+    assert fitted.on_boundary
+    assert fitted.provisional
+
+
+def test_an_interior_fit_reports_no_boundary(reference_mgps: dict[str, Any]) -> None:
+    squashed = reference_mgps["squashed"]
+    fitted = fit_hyperparameters(
+        np.asarray(squashed["N"], dtype=np.float64),
+        np.asarray(squashed["E"], dtype=np.float64),
+        weights=np.asarray(squashed["weight"], dtype=np.float64),
+    )
+
+    assert fitted.on_boundary == ()
+    assert not fitted.provisional
+
+
+def test_squash_preserves_the_table_it_stands_for(reference_mgps: dict[str, Any]) -> None:
+    """Total weight is the row count and every stratum keeps its count value.
+
+    A squash that lost or invented weight would silently reweight the
+    likelihood, which no downstream check would catch.
+    """
+    table = reference_mgps["table"]
+    count = np.asarray(table["N"], dtype=np.float64)
+    expected = np.asarray(table["E"], dtype=np.float64)
+
+    squashed_n, squashed_e, weights = squash(count, expected)
+
+    assert weights.sum() == pytest.approx(float(count.size))
+    assert set(np.unique(squashed_n)) == set(np.unique(count))
+    assert squashed_n.size < count.size
+    assert np.all(squashed_e > 0)
+
+    # Weight within each count stratum matches the number of pairs in it.
+    for value in np.unique(count):
+        assert weights[squashed_n == value].sum() == pytest.approx(
+            float(np.count_nonzero(count == value))
+        )
+
+
+def test_squash_leaves_small_strata_whole(reference_mgps: dict[str, Any]) -> None:
+    """Only strata with enough rows to bin are binned.
+
+    Measured on this data: squashing the 16,040-pair N=1 stratum costs 0.3
+    percent on the fitted prior, while also squashing the 710-pair N=2 stratum
+    moves alpha1 from 2.94 to 22.8. The guard is what separates the two.
+    """
+    table = reference_mgps["table"]
+    count = np.asarray(table["N"], dtype=np.float64)
+    expected = np.asarray(table["E"], dtype=np.float64)
+
+    squashed_n, _e, weights = squash(count, expected)
+
+    large = count == 1
+    small = count == 2
+    assert np.count_nonzero(large) > 15_000
+    assert 0 < np.count_nonzero(small) < 1_000
+
+    assert np.count_nonzero(squashed_n == 1) < np.count_nonzero(large)
+    assert np.count_nonzero(squashed_n == 2) == np.count_nonzero(small)
+    assert np.all(weights[squashed_n == 2] == 1.0)
+
+
+def test_fitting_the_squashed_table_reproduces_the_published_prior(
+    reference_mgps: dict[str, Any],
+) -> None:
+    """The point of squashing: the same prior, from a table a thousand times smaller.
+
+    openEBGM squashed twice and fitted with nlminb; this squashes once, with an
+    independent implementation, and fits with L-BFGS-B. Agreement is evidence
+    that the reduction preserves what the likelihood depends on.
+    """
+    table = reference_mgps["table"]
+    count = np.asarray(table["N"], dtype=np.float64)
+    expected = np.asarray(table["E"], dtype=np.float64)
+
+    fitted = fit_hyperparameters(count, expected, squash_above=0)
+    published = reference_mgps["theta_hat"]
+
+    assert fitted.n_pairs == count.size
+    assert fitted.n_fitted_rows < count.size / 10
+    for name in ("alpha1", "beta1", "alpha2", "beta2", "p"):
+        assert getattr(fitted, name) == pytest.approx(published[name], rel=0.005), name
+
+
+def test_a_small_table_is_fitted_without_squashing(reference_mgps: dict[str, Any]) -> None:
+    """Squashing is for tables too large to fit directly, and nothing else."""
+    squashed = reference_mgps["squashed"]
+    fitted = fit_hyperparameters(
+        np.asarray(squashed["N"], dtype=np.float64),
+        np.asarray(squashed["E"], dtype=np.float64),
+        weights=np.asarray(squashed["weight"], dtype=np.float64),
+    )
+
+    assert fitted.n_fitted_rows == fitted.n_pairs
+
+
+def test_profile_likelihood_fixes_its_parameter_and_refits_the_rest(
+    reference_mgps: dict[str, Any],
+) -> None:
+    """Each point holds the fixed value and a theta that reproduces its own NLL.
+
+    A profile whose reported likelihood did not correspond to its reported
+    parameters would read as a curve while describing nothing.
+    """
+    squashed = reference_mgps["squashed"]
+    count = np.asarray(squashed["N"], dtype=np.float64)
+    expected = np.asarray(squashed["E"], dtype=np.float64)
+    weights = np.asarray(squashed["weight"], dtype=np.float64)
+
+    grid = (0.5, 1.0, 2.0, 4.0)
+    profile = profile_likelihood(count, expected, parameter="alpha1", grid=grid, weights=weights)
+
+    assert [point.value for point in profile] == list(grid)
+    for point in profile:
+        assert point.theta[0] == point.value
+        assert negative_log_likelihood(
+            point.theta, count, expected, weights=weights
+        ) == pytest.approx(point.neg_log_likelihood, rel=1e-9)
+
+
+def test_the_profile_minimum_agrees_with_the_free_fit(reference_mgps: dict[str, Any]) -> None:
+    """A grid point at the fitted value must not beat the unconstrained optimum."""
+    squashed = reference_mgps["squashed"]
+    count = np.asarray(squashed["N"], dtype=np.float64)
+    expected = np.asarray(squashed["E"], dtype=np.float64)
+    weights = np.asarray(squashed["weight"], dtype=np.float64)
+    published = reference_mgps["theta_hat"]["alpha1"]
+
+    profile = profile_likelihood(
+        count, expected, parameter="alpha1", grid=(published,), weights=weights
+    )
+
+    assert len(profile) == 1
+    assert (
+        profile[0].neg_log_likelihood
+        >= reference_mgps["neg_log_likelihood_squashed"]
+        - abs(reference_mgps["neg_log_likelihood_squashed"]) * 1e-6
+    )
+
+
+def test_profiling_an_unknown_parameter_is_refused() -> None:
+    with pytest.raises(ValueError, match="unknown parameter"):
+        profile_likelihood(np.ones(10), np.ones(10), parameter="lambda", grid=(1.0,))

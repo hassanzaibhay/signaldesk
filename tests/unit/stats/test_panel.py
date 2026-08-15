@@ -77,3 +77,39 @@ def test_minimum_cell_is_the_locked_three() -> None:
 def test_cells_sum_to_the_background_on_every_row() -> None:
     table = _table()
     assert table.n.tolist() == [10_000_000, 10_000_000, 10_000_000]
+
+
+def test_a_provisional_prior_nulls_the_four_method_flag() -> None:
+    """A headline count must not rest on a prior that is an artefact of a bound.
+
+    ``None`` rather than an array of ``False``: absent and negative are
+    different answers, and a column of ``False`` reads as "no pair met all
+    four" to anything that consumes it.
+    """
+    provisional = MgpsHyperparameters(
+        alpha1=1e-6,
+        beta1=0.38537165,
+        alpha2=2.15410622,
+        beta2=2.03677734,
+        p=0.0720271218954894,
+        neg_log_likelihood=0.0,
+        iterations=0,
+        n_pairs=0,
+        on_boundary=("alpha1",),
+    )
+    panel = estimate_all(_table(), hyperparameters=provisional)
+
+    assert panel.mgps_provisional
+    assert panel.flag_all_four is None
+    assert (
+        panel.flag_three_of_four.tolist()
+        == (panel.flag_ror & panel.flag_prr & panel.flag_bcpnn).tolist()
+    )
+
+
+def test_an_interior_prior_reports_all_four() -> None:
+    panel = estimate_all(_table(), hyperparameters=PRIOR)
+
+    assert not panel.mgps_provisional
+    assert panel.flag_all_four is not None
+    assert panel.flag_all_four.tolist() == (panel.flag_three_of_four & panel.flag_mgps).tolist()

@@ -388,15 +388,151 @@ def normalize_drugs() -> None:
 
 
 @signals_app.command("build")
-def signals_build() -> None:
-    """Recompute contingency tables and the four estimators over the corpus."""
-    _owned_by("P08", "signal build")
+def signals_build(
+    drug_key: Annotated[
+        str,
+        typer.Option(
+            "--drug-key",
+            help=(
+                "What counts as one drug: 'ingredient' resolves through the RxNorm "
+                "normalization tables, 'raw-string' groups on the published drug name "
+                "without resolving it. Recorded on the run; no number means anything "
+                "without it."
+            ),
+        ),
+    ] = "ingredient",
+    roles: Annotated[
+        str,
+        typer.Option(
+            "--roles",
+            help=(
+                "Reported drug roles in scope: 'ps-ss' for the primary analysis, "
+                "'ps' for the primary-suspect sensitivity analysis."
+            ),
+        ),
+    ] = "ps-ss",
+    min_a: Annotated[
+        int,
+        typer.Option(
+            "--min-a",
+            help=(
+                "Minimum co-reporting cases for a pair to enter the headline counts. "
+                "Pairs below it are still computed and written, marked insufficient."
+            ),
+        ),
+    ] = 3,
+    from_quarter: Annotated[
+        str | None, typer.Option("--from", help="First quarter, for example 2012Q4.")
+    ] = None,
+    to_quarter: Annotated[str | None, typer.Option("--to", help="Last quarter.")] = None,
+) -> None:
+    """Recompute contingency tables and the four estimators over the corpus.
+
+    Writes one immutable run to /data/parquet/signal, plus the parameters, the
+    commit and the data snapshot that produced it. Takes a few minutes on the
+    full corpus; the wall clock and peak memory are measured and reported.
+    """
+    _setup_django()
+
+    from signaldesk.analytics.contingency import ContingencySpec, DrugKey, RoleFilter
+    from signaldesk.analytics.signals import build as build_signals
+
+    try:
+        spec = ContingencySpec(
+            drug_key=DrugKey(drug_key.replace("-", "_")),
+            roles=RoleFilter(roles.replace("-", "_")),
+            min_a=min_a,
+            start_quarter=from_quarter,
+            end_quarter=to_quarter,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    record, path = build_signals(spec)
+
+    typer.echo(f"run:                 {record.run_id}")
+    typer.echo(f"drug key:            {record.params['drug_key']}")
+    typer.echo(f"roles:               {record.params['role_codes']}")
+    typer.echo(f"deduplicated cases:  {record.n_cases:,}")
+    typer.echo(f"pairs written:       {record.pairs_observed:,}")
+    typer.echo(f"pairs with a >= {min_a}:   {record.pairs_sufficient:,}")
+    typer.echo("flagged, over pairs at or above the minimum cell count:")
+    for name in ("ror", "prr", "bcpnn", "three_of_four"):
+        headline = record.flag_counts[name]
+        raw = record.flag_counts[f"{name}_including_insufficient"]
+        typer.echo(f"  {name:16} {headline:>12,}   (with insufficient pairs: {raw:,})")
+    if record.mgps_provisional:
+        typer.echo(
+            "MGPS:                provisional - the prior converged onto a bound "
+            f"({', '.join(record.hyperparameters['on_boundary'])}). "  # type: ignore[arg-type]
+            "EBGM columns are written but are not measurements."
+        )
+    else:
+        typer.echo(f"MGPS flagged:        {record.flag_counts['mgps']:,}")
+        typer.echo(f"all four:            {record.flag_counts['all_four']:,}")
+    typer.echo(f"seconds:             {record.seconds:,.1f}")
+    typer.echo(f"peak RSS:            {record.peak_rss_bytes / 1024**3:.2f} GiB")
+    typer.echo(f"written to:          {path}")
+
+
+@signals_app.command("artifact")
+def signals_artifact(
+    runs: Annotated[
+        list[str],
+        typer.Option(
+            "--run",
+            help=(
+                "Run identifier to include. Repeat for each run. The primary analysis "
+                "and its sensitivity run belong in one artifact."
+            ),
+        ),
+    ],
+    diagnostics: Annotated[
+        Path | None,
+        typer.Option(
+            "--mgps-diagnostic",
+            help=(
+                "JSON file holding the MGPS boundary diagnostic - the profile "
+                "likelihood and the EBGM05 sensitivity across it - to embed in the "
+                "artifact."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Collect signal runs into one committed artifact under evals/history/."""
+    _setup_django()
+
+    from signaldesk.analytics.signals import write_history_artifact
+
+    path = write_history_artifact(runs, diagnostics=diagnostics)
+    typer.echo(f"written to {path}")
 
 
 @index_app.command("build")
 def index_build() -> None:
     """Chunk documents, embed Tier A, and build the sparse and dense indexes."""
     _owned_by("P10", "index build")
+
+
+def _run_signals_suite() -> None:
+    """Validate the estimators against the published reference standards.
+
+    Refuses, naming every path, until the curated files exist. They are written
+    by hand and are never generated here: a reference standard produced by the
+    system it evaluates measures nothing.
+    """
+    from signaldesk.evals.signals.reference import ReferenceSetError, load_all
+
+    try:
+        _outcome_map, sets = load_all()
+    except ReferenceSetError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=1) from error
+
+    for name, reference in sets.items():
+        typer.echo(
+            f"{name}: {len(reference)} pairs ({reference.positives}+/{reference.negatives}-)"
+        )
 
 
 @evals_app.command("run")
@@ -412,6 +548,10 @@ def evals_run(
     ],
 ) -> None:
     """Run an evaluation suite and append its metrics to the committed history."""
+    if suite == "signals":
+        _setup_django()
+        _run_signals_suite()
+        return
     _owned_by("P09 to P16", f"the {suite} evaluation suite")
 
 

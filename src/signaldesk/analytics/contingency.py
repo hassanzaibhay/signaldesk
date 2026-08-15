@@ -204,10 +204,19 @@ def _drug_identity_sql(spec: ContingencySpec, settings: Settings | None) -> str:
               AND trim(d.drugname_raw) <> ''
         """
 
-    # Ingredient mode. The source's own active-ingredient field is preferred
-    # over the free-text name where both resolve, because it is already a
-    # substance rather than a product; the fallback is recorded in the match
-    # table by source_field, not decided here.
+    # Ingredient mode. A drug row is matched through whichever of the two source
+    # fields the mapping resolved: the source's own active-ingredient column
+    # where it was populated and resolved, the free-text name otherwise. Both
+    # are allowed to contribute, and the outer DISTINCT collapses a row that
+    # resolves through both to the same ingredient. That is deliberate rather
+    # than a precedence rule: where the two fields disagree they usually name
+    # different ingredients of the same combination product, and dropping one
+    # would shorten the ingredient set rather than resolve a conflict.
+    #
+    # UNVERIFIED ON REAL DATA. The normalization tables do not exist in any
+    # database this has run against, so this branch has been type-checked and
+    # reasoned about but never executed against real rows. No number produced by
+    # ingredient mode should be quoted until it has been.
     return f"""
         SELECT DISTINCT p.primaryid, i.name AS drug
         FROM read_parquet('{drug_glob}', hive_partitioning := true) d
@@ -286,7 +295,11 @@ def build(
     reaction_glob = dataset_glob("reaction", settings)
     duplicates = _duplicate_primaryids()
 
-    with connection(settings) as handle:
+    # In-memory: this pass reads Parquet and creates only temporary tables, so
+    # it has no business holding an exclusive lock on the shared analytics
+    # database. Progress bars off because this is a library path, not a CLI one;
+    # a probe run emitted 440 KB of escape codes into stdout.
+    with connection(settings, in_memory=True) as handle:
         handle.execute("SET enable_progress_bar=false")
         handle.register("faers_duplicate_ids", duplicates)
 

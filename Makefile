@@ -1,6 +1,13 @@
 DC ?= docker compose
 EXEC := $(DC) exec -T web
 
+# The container has no .git - the application does not read the working
+# tree - so the commit is resolved here and passed in, and every run
+# artifact records the code it was produced by.
+CODE_SHA := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+# docker compose exec takes its flags before the service name.
+EXEC_SHA := $(DC) exec -T -e SIGNALDESK_CODE_SHA=$(CODE_SHA) web
+
 .DEFAULT_GOAL := help
 
 .PHONY: help bootstrap up up-dev down restart logs ps shell dbshell \
@@ -91,7 +98,7 @@ normalize-drugs:  ## Map FAERS drug strings to RxNorm ingredients
 	$(EXEC) signaldesk normalize drugs $(ARGS)
 
 build-signals:  ## Recompute contingency tables and estimators
-	$(EXEC) signaldesk signals build $(ARGS)
+	$(EXEC_SHA) signaldesk signals build $(ARGS)
 
 build-index:  ## Chunk, embed, and build the sparse and dense indexes
 	$(EXEC) signaldesk index build $(ARGS)

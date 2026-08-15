@@ -125,6 +125,11 @@ mgps <- list(
   neg_log_likelihood_squashed = negLLsquash(theta_hat, ni = squashed$N, ei = squashed$E,
                                             wi = squashed$weight, N_star = 1),
   neg_log_likelihood_sample = negLL(theta_hat, N = proc$N[idx], E = proc$E[idx], N_star = 1),
+  table = list(N = proc$N, E = proc$E),
+  squashed_once = local({
+    one <- squashData(proc, bin_size = 300, keep_pts = 10)
+    list(N = one$N, E = one$E, weight = one$weight)
+  }),
   squashed = list(N = squashed$N, E = squashed$E, weight = squashed$weight),
   sample_index0 = idx - 1L,
   sample = list(

@@ -62,7 +62,7 @@ def test_ic025_never_exceeds_ic(a: int, b: int, c: int, d: int) -> None:
     assume(a + b + c + d > 0)
     result = information_component(_one(a, b, c, d))
     assert float(result.ic025[0]) <= float(result.ic[0])
-    assert float(result.ic025_exact[0]) <= float(result.ic_posterior_mean[0])
+    assert float(result.ic025_exact[0]) <= float(result.ic[0])
 
 
 @PROPERTY_SETTINGS
@@ -70,9 +70,9 @@ def test_ic025_never_exceeds_ic(a: int, b: int, c: int, d: int) -> None:
 def test_no_estimator_returns_nan(a: int, b: int, c: int, d: int) -> None:
     """A NaN in a statistics pipeline is a fabricated result that looks like data.
 
-    Infinities are permitted where a statistic genuinely diverges - the locked
-    IC at ``a = 0`` is one - but a NaN says the arithmetic went somewhere its
-    author did not intend.
+    Infinities are permitted where a statistic genuinely diverges - the
+    observed-to-expected column at ``a = 0`` is one - but a NaN says the
+    arithmetic went somewhere its author did not intend.
     """
     assume(a + b + c + d > 0)
     table = _one(a, b, c, d)
@@ -92,7 +92,7 @@ def test_no_estimator_returns_nan(a: int, b: int, c: int, d: int) -> None:
         bcpnn.ic,
         bcpnn.ic025,
         bcpnn.ic_variance,
-        bcpnn.ic_posterior_mean,
+        bcpnn.ic_observed_expected,
         bcpnn.ic025_exact,
     ):
         assert not np.any(np.isnan(array)), (a, b, c, d)
@@ -186,7 +186,9 @@ def test_ic_increases_with_the_co_reported_count_when_a_is_small_beside_its_marg
     lower = _one(a, b, c, d)
     higher = _one(a + extra, b, c, d)
 
-    assert float(information_component(higher).ic[0]) > float(information_component(lower).ic[0])
+    assert float(information_component(higher).ic_observed_expected[0]) > float(
+        information_component(lower).ic_observed_expected[0]
+    )
 
 
 @pytest.mark.parametrize(
@@ -211,8 +213,8 @@ def test_ic_is_not_monotonic_in_a_when_a_rivals_its_margins(
     corpus size, which is why the property above is conditioned on ``b`` and
     ``c`` rather than on ``d``.
     """
-    low = float(information_component(_one(*cells_low)).ic[0])
-    high = float(information_component(_one(*cells_high)).ic[0])
+    low = float(information_component(_one(*cells_low)).ic_observed_expected[0])
+    high = float(information_component(_one(*cells_high)).ic_observed_expected[0])
 
     assert high < low
 

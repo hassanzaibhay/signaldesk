@@ -46,3 +46,21 @@ def test_connection_closes_the_handle(settings: Settings) -> None:
 def test_read_only_connection_to_a_missing_database_fails(settings: Settings) -> None:
     with pytest.raises(duckdb.Error):
         db.connect(settings, path=settings.data_dir / "absent.duckdb", read_only=True)
+
+
+def test_in_memory_connections_do_not_lock_the_analytics_database(settings: Settings) -> None:
+    """Two passes that only read Parquet must be able to run at once.
+
+    DuckDB takes an exclusive file lock. The contingency builder creates only
+    temporary tables, so it opens a private database instead; before it did,
+    a second build failed with a lock conflict and a killed one left a stale
+    lock that blocked the next until its process was hunted down.
+    """
+    from signaldesk.core.db import connection, duckdb_path
+
+    with connection(settings, in_memory=True) as first:
+        first.execute("CREATE TEMP TABLE probe AS SELECT 1 AS x")
+        with connection(settings, in_memory=True) as second:
+            assert second.execute("SELECT 42").fetchone() == (42,)
+
+    assert not duckdb_path(settings).exists()

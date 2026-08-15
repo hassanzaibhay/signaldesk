@@ -52,40 +52,42 @@ its ``r2b = N - n11 - 1 + (2+N)^2/(q1*p1)`` is ``g - g11 + N - a`` written out.
 
 ## What is reported
 
-ARCHITECTURE section 8.2 locks the reported statistic to the closed form
-``IC = log2(N*a / ((a+b)(a+c)))`` with ``IC025 = IC - 2*sqrt(V)``, the
-Noren/WHO-UMC convention. That closed form is the observed-to-expected ratio,
-not the posterior mean, so both are returned: ``ic``/``ic025`` are the locked
-pair that the signal table and its threshold use, and ``ic_posterior_mean``/
-``ic025_exact`` are the exact posterior mean and its 2.5th percentile.
+``ic`` is the posterior mean above, and ``ic025 = ic - 2*sqrt(V)``. The signal
+threshold is ``ic025 > 0``.
 
-**The two do not agree, and what separates them is the expected count, not the
-observed one.** ``g`` grows without bound as ``E`` falls, so a pair between a
-rare drug and a rare term carries an enormous prior and its posterior mean is
-shrunk hard, while the closed form is not shrunk at all. Measured on the
-reference tables in ``tests/fixtures/estimators/``:
+ARCHITECTURE section 8.2 originally specified the closed form
+``log2(N*a / ((a+b)(a+c)))`` as the point estimate. It was amended on 2026-08-15
+because that pairing is incoherent: ``V`` is the variance of the posterior, which
+shrinks as the expected count falls, while the closed form is the raw
+observed-to-expected ratio and does not shrink at all. Subtracting a shrunk
+standard deviation from an unshrunk point estimate leaves ``ic025`` least
+conservative exactly where the evidence is thinnest. ``g`` scales as ``1/E``, so
+what drives the divergence is the expected count, not the observed one. Measured
+on the reference tables in ``tests/fixtures/estimators/``:
 
-=========  =========  ==========  ===================  ==============
-``a``      ``E``      ``IC``      posterior mean       difference
-=========  =========  ==========  ===================  ==============
-5000       577.5      3.114       3.112                0.002
-25         20.5       0.286       0.245                0.041
-100        0.400      7.966       6.169                1.797
-4          0.0002     14.025      2.268                11.757
-=========  =========  ==========  ===================  ==============
+=========  =========  ===================  ==========================  ==========
+``a``      ``E``      posterior mean       observed/expected           difference
+=========  =========  ===================  ==========================  ==========
+5000       577.5      3.112                3.114                       0.002
+25         20.5       0.245                0.286                       0.041
+100        0.400      6.169                7.966                       1.797
+4          0.0002     2.268                14.025                      11.757
+=========  =========  ===================  ==========================  ==========
 
-The consequence is that ``ic025``, which subtracts a shrunk posterior's standard
-deviation from an unshrunk point estimate, is far less conservative than the
-posterior's own 2.5th percentile exactly where the evidence is thinnest. Both
-columns are therefore written to every signal row, and the build artifact
-records the corpus-wide divergence. Reconciling them is an ARCHITECTURE 8.2
-amendment and is not decided here.
+On the last row the amended ``ic025`` is 0.61 where the previous definition gave
+12.30, against an exact posterior 2.5th percentile of 0.58. The remaining 0.03 is
+the ``2`` against ``1.96`` multiplier and nothing else.
 
-The closed form is ``-inf`` at ``a = 0`` where the posterior mean is finite.
-Pairs with ``a = 0`` are not materialised by the contingency builder, so this
-arises only in tests, and it is left as ``-inf`` rather than patched: the locked
-statistic genuinely is undefined there, and the posterior column beside it says
-what the Bayesian answer would have been.
+The closed form is kept as ``ic_observed_expected`` so the divergence stays
+visible rather than being resolved silently, and ``ic025_exact`` carries the
+exact 2.5th percentile beside the locked two-sigma bound. The build artifact
+reports the corpus-wide gap on every run.
+
+``ic_observed_expected`` is ``-inf`` at ``a = 0``, where the posterior mean is
+finite. Pairs with ``a = 0`` are not materialised by the contingency builder, so
+this arises only in tests; it is left as ``-inf`` rather than patched, because
+that statistic genuinely is undefined there and the reported ``ic`` beside it is
+not.
 """
 
 from __future__ import annotations
@@ -117,7 +119,7 @@ _LN2 = float(np.log(2.0))
 
 
 def information_component(table: Contingency) -> BcpnnResult:
-    """IC and IC025, with the exact posterior mean and percentile alongside."""
+    """IC as the posterior mean, its two-sigma bound, and the unshrunk ratio."""
     a = table.a.astype(np.float64)
     n = table.n.astype(np.float64)
     n_drug = table.n_drug.astype(np.float64)
@@ -158,13 +160,13 @@ def information_component(table: Contingency) -> BcpnnResult:
     # where it means something.
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = np.where(a > 0.0, n * a / (n_drug * n_event), 0.0)
-        ic = np.where(a > 0.0, np.log2(ratio), -np.inf)
+        observed_expected = np.where(a > 0.0, np.log2(ratio), -np.inf)
 
     return BcpnnResult(
-        ic=ic,
-        ic025=ic - IC025_SIGMA * standard_deviation,
+        ic=posterior_mean,
+        ic025=posterior_mean - IC025_SIGMA * standard_deviation,
         ic_variance=variance,
-        ic_posterior_mean=posterior_mean,
+        ic_observed_expected=observed_expected,
         ic025_exact=posterior_mean - EXACT_SIGMA * standard_deviation,
     )
 

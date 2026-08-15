@@ -1,0 +1,464 @@
+{
+  "artifact": "signals",
+  "code_sha": "unknown",
+  "mgps_boundary_diagnostic": {
+    "consequence": "EBGM and EBGM05 are written to the signal table and are not measurements. flag_all_four is null rather than false. flag_three_of_four over ROR, PRR and BCPNN is what these runs support.",
+    "ebgm05_sensitivity": {
+      "flagged_maximum": 1379260,
+      "flagged_minimum": 1133087,
+      "points": [
+        {
+          "alpha1": 1e-06,
+          "flagged_ebgm05_gt_2": 1133087,
+          "max": 30205.91659605001,
+          "median": 1.3804439585598076,
+          "nll": 16580220.182863755,
+          "q90": 10.396062972210789,
+          "q99": 499.57054959075447,
+          "theta": [
+            1e-06,
+            0.0018756418125551288,
+            0.18170672415474143,
+            0.26074025774192305,
+            0.15256140640802815
+          ]
+        },
+        {
+          "alpha1": 0.001,
+          "flagged_ebgm05_gt_2": 1134008,
+          "max": 30194.03187381998,
+          "median": 1.3810397147353783,
+          "nll": 16580708.153250372,
+          "q90": 17.40200365244909,
+          "q99": 507.2113993074068,
+          "theta": [
+            0.001,
+            0.0018767805628824472,
+            0.18116348326608656,
+            0.2603055579483444,
+            0.15219878171534634
+          ]
+        },
+        {
+          "alpha1": 0.01,
+          "flagged_ebgm05_gt_2": 1141400,
+          "max": 30095.38916675032,
+          "median": 1.3867029294980224,
+          "nll": 16585080.768110786,
+          "q90": 28.622743809278703,
+          "q99": 507.3674796385133,
+          "theta": [
+            0.01,
+            0.0018862884643306211,
+            0.1761207151598704,
+            0.2563159233028047,
+            0.1491231802803725
+          ]
+        },
+        {
+          "alpha1": 0.1,
+          "flagged_ebgm05_gt_2": 1174919,
+          "max": 29370.15384985374,
+          "median": 1.423691970053867,
+          "nll": 16626118.681861982,
+          "q90": 33.126749855121524,
+          "q99": 510.0410047895336,
+          "theta": [
+            0.1,
+            0.001958897797488553,
+            0.13214499256562,
+            0.22078371154320142,
+            0.12206750689361463
+          ]
+        },
+        {
+          "alpha1": 1.0,
+          "flagged_ebgm05_gt_2": 1379260,
+          "max": 23178.636495859537,
+          "median": 1.9547144865341746,
+          "nll": 16810479.977972925,
+          "q90": 41.25832596499046,
+          "q99": 531.6345388416902,
+          "theta": [
+            1.0,
+            0.002768984372768973,
+            1e-06,
+            0.10936362238563792,
+            0.043372440957397645
+          ]
+        }
+      ],
+      "question": "Does EBGM05 move materially across the profile? If it did not, the boundary reading would not be load-bearing for any reported number.",
+      "relative_spread": 0.17848193959079506,
+      "sufficient_pairs": 2785896,
+      "verdict": "It moves. Flagged count spans 1,133,087 to 1,379,260, a 17.9 percent relative spread, and the 90th percentile moves fourfold from 10.40 to 41.26. Which alpha1 is believed changes the reported signal count by about 246,000 pairs, so the boundary reading is load-bearing and MGPS stays withheld."
+    },
+    "method": "Profile likelihood: alpha1 fixed on a grid, the remaining four parameters refitted at each point from every start point, best kept. Monotone descent toward the bound means the bound is the optimum; an interior minimum would mean the optimizer failed.",
+    "profile": {
+      "irregularity": "alpha1 = 0.05 sits 7,376 nats above alpha1 = 0.1, breaking local monotonicity. Both are 45,000 to 53,000 nats above the boundary value, so this is a nested-refit local optimum at that grid point rather than evidence of an interior minimum.",
+      "parameter": "alpha1",
+      "points": [
+        {
+          "alpha1": 1e-06,
+          "excess_over_minimum": 0.0,
+          "neg_log_likelihood": 16580220.182863755
+        },
+        {
+          "alpha1": 1e-05,
+          "excess_over_minimum": 4.393426116555929,
+          "neg_log_likelihood": 16580224.576289872
+        },
+        {
+          "alpha1": 0.0001,
+          "excess_over_minimum": 48.376517437398434,
+          "neg_log_likelihood": 16580268.559381193
+        },
+        {
+          "alpha1": 0.001,
+          "excess_over_minimum": 487.97038661688566,
+          "neg_log_likelihood": 16580708.153250372
+        },
+        {
+          "alpha1": 0.01,
+          "excess_over_minimum": 4860.585247030482,
+          "neg_log_likelihood": 16585080.768110786
+        },
+        {
+          "alpha1": 0.05,
+          "excess_over_minimum": 53274.46535223164,
+          "neg_log_likelihood": 16633494.648215987
+        },
+        {
+          "alpha1": 0.1,
+          "excess_over_minimum": 45898.4989982266,
+          "neg_log_likelihood": 16626118.681861982
+        },
+        {
+          "alpha1": 0.2,
+          "excess_over_minimum": 84873.82093645632,
+          "neg_log_likelihood": 16665094.003800211
+        },
+        {
+          "alpha1": 0.35,
+          "excess_over_minimum": 130185.80346160196,
+          "neg_log_likelihood": 16710405.986325357
+        },
+        {
+          "alpha1": 0.5,
+          "excess_over_minimum": 162862.3338244576,
+          "neg_log_likelihood": 16743082.516688213
+        },
+        {
+          "alpha1": 0.75,
+          "excess_over_minimum": 201077.80766425095,
+          "neg_log_likelihood": 16781297.990528006
+        },
+        {
+          "alpha1": 1.0,
+          "excess_over_minimum": 230259.79510916956,
+          "neg_log_likelihood": 16810479.977972925
+        },
+        {
+          "alpha1": 1.5,
+          "excess_over_minimum": 276367.53702171706,
+          "neg_log_likelihood": 16856587.719885472
+        },
+        {
+          "alpha1": 2.0,
+          "excess_over_minimum": 313476.01235780306,
+          "neg_log_likelihood": 16893696.19522156
+        },
+        {
+          "alpha1": 3.0,
+          "excess_over_minimum": 371502.37575860135,
+          "neg_log_likelihood": 16951722.558622357
+        }
+      ],
+      "reading": "A zero-truncated negative binomial tends to the logarithmic distribution as its shape goes to zero. That is a legitimate limit for a table where 68 percent of pairs are reported exactly once, not a defect.",
+      "verdict": "monotone decreasing toward the bound; no interior minimum"
+    },
+    "question": "The gamma mixture fit reaches the lower bound on alpha1 for this corpus. Is the bound the genuine optimum for this data shape, or a defective likelihood?",
+    "run": {
+      "drug_key": "raw_string",
+      "pairs": 8583614,
+      "roles": "PS,SS",
+      "rows_after_squashing": 497975,
+      "seconds": 734.8
+    }
+  },
+  "quotable": {
+    "estimators": [
+      "ror",
+      "prr",
+      "bcpnn"
+    ],
+    "note": "Numbers safe to quote elsewhere. Anything absent from this list is either provisional or not yet measured.",
+    "withheld": [
+      "mgps"
+    ],
+    "withheld_reason": "The gamma mixture prior converged onto a bound on this corpus. The profile likelihood shows the bound is the genuine optimum rather than an optimizer failure, but EBGM05 moves by 17.9 percent in flagged count across that profile, so which value is believed changes the reported number. EBGM and EBGM05 columns exist in the signal table and are not measurements."
+  },
+  "reference_validation": {
+    "reason": "evals/reference_sets/ is empty. The Harpaz, OMOP and EU-ADR standards and the outcome-to-PT map are curated by hand and are not generated by this project. No AUROC, sensitivity or specificity is reported until they exist.",
+    "required_files": [
+      "evals/reference_sets/outcome_pt_map.yaml",
+      "evals/reference_sets/harpaz_2013.csv",
+      "evals/reference_sets/omop.csv",
+      "evals/reference_sets/euadr.csv"
+    ],
+    "status": "blocked"
+  },
+  "runs": [
+    {
+      "code_sha": "9583b8018ba55c95b5dc28b34b83611f8fe59dfe",
+      "created_at": "2026-08-15T14:24:28.114887+00:00",
+      "data_snapshot": {
+        "2012Q4": "20562c821eebd248445b7618ad63222acbe45ecb90e9fa384c07a82516661368",
+        "2013Q1": "31df3e518d400a8ba0323629dd4c64809370f5d1c2e4d0711b32997066dcfc49",
+        "2013Q2": "1f954f7561f8c9408a7547fcbcbc786a7329b2fad78dca86ab67cb85188d7e39",
+        "2013Q3": "e440ac13442f573fdeae216dad5d2ffa5e24fb4815625fb5c0915068c72a7fd5",
+        "2013Q4": "2e36bab3c85215d3471dbe6562861668b1c2141b23d1d2f5b5bb43d0fe9b9c8e",
+        "2014Q1": "86836c2acd70848d0bc4eaa776247cbc4da08625400b949f2ccff38e64943031",
+        "2014Q2": "2fad8b257781c5c39c7f414355abdb11bf405efad897cf8cca16c393784e6405",
+        "2014Q3": "8b8b79a7381103f5f653ec5c011444e54401bdab1a92e78e6d2bbeca37ce40a2",
+        "2014Q4": "ab5e44fdd430113b1a4eba2262fe4fc0d67d51525328343348eecd7fed7e7f7f",
+        "2015Q1": "ba1fc85963cb55a041dfa3b106550a3c9af4467477b15c65ba6a39509b1d2909",
+        "2015Q2": "218cc382545ecbf8ba738720a5cc9e96253b30040512aecf0395cbb8af340158",
+        "2015Q3": "e87780d538d128908c2f4d8aeacaae548249af16ffd9d19924af8566e13b5f5d",
+        "2015Q4": "b738b69f999a23a46224ac57fbde11971caa21af23be05655b9dac58af003738",
+        "2016Q1": "1df9f39e415fea6aa578946950265e535088ab7ef80523dfe6a6ec9f402ac129",
+        "2016Q2": "7ee2937a94dda400eba9e411c8d95aa4731e020ff080774ba2a5aaf413458494",
+        "2016Q3": "cc1548f46763945f228d91aeceb90f24239a20faa51ffec9abddf32a886d7c7d",
+        "2016Q4": "203a04739b272a0fa7b0ba55b1a932d3825e13156f18cc121f2bae7efc062928",
+        "2017Q1": "8b347d55faae822a896c106681f9af40a9b5d858fef78b8023ae20d49f36c044",
+        "2017Q2": "e61cff7a813c413a1b074b21dd82db926dc34eb285478d8a7b12f1171ba4b8f6",
+        "2017Q3": "eb03aa80d900b9168b8807ed72c94992de2e601a514aab2ba7995b912f9a916a",
+        "2017Q4": "586976e775598f1261cea863703b24a6236c7a16645f4764aec67138d6bce885",
+        "2018Q1": "021761361fa3acebe517cf2d941e96a2a03ce6597fd03dda205b0c94a573395c",
+        "2018Q2": "cde475975ae7342a841c7a04c10618b94bc65555cee93c0215661ed0d65449b5",
+        "2018Q3": "b974e77d35a47e3e5f2d999f57c61037243a89c07f3826f242e20dc8f6063ba7",
+        "2018Q4": "8f659d11b94f04618e1f2202e18779399c3e47e272c03e0bcd023bdceea2e322",
+        "2019Q1": "51229f0e421b49c022ffbaccba696426e0787ca378d8c7b73bd89006f3f5e9e9",
+        "2019Q2": "1910995dfb006f0b97d610716440aa453de6b2d9ff7381fc05f64d442425e5c7",
+        "2019Q3": "7f02a06088a73cbf910f1cd065a685f8d262f34e6c534deedc1b8fa0de155b84",
+        "2019Q4": "ddbac5a8eb09739c968c77c6370de3ceed388c722197574d0a550f3c680a16fc",
+        "2020Q1": "3d5d38ca7aa7b254b472164a47c93f59a7103c0d6201e3b743559b4179db4a5d",
+        "2020Q2": "f9fe8e8b6d285a11018e399f4c3927440a0d8bfb52c7ad1025622388ad05de6a",
+        "2020Q3": "4ed47f09faaf8ea6f52bb1f5c19ca1fce1959d0a7d16a08360071a4a5a623b40",
+        "2020Q4": "22ed5117ddbd4f66577eb07a0d1e28dbfcbe66176400fbfbbda8ff23aa69a27d",
+        "2021Q1": "3432dc656ec0a4700a86f4865676417062ab0fc69067d8505355dca2fb43d563",
+        "2021Q2": "33d90c7ee20aebece837a981705ec6d84839d0ff14b0b0563ed0bc45e189ca6a",
+        "2021Q3": "32db043748af1fedcf03bf2635dcf1aa4dbd5cc4f8440f67ea81c5670f713b36",
+        "2021Q4": "8d41ec8d36aad4de3450840517bd52b8b21271ac936b52cb851f0654ea13a15b",
+        "2022Q1": "76cb17f81e49b145aefb108c7d6d486a8d39a86159e91de2e09f9ad9954c7291",
+        "2022Q2": "3cc5a4fa96ff1ec58da4669e1e415cbf50812beef582244720cfa87a8df70d4f",
+        "2022Q3": "810689d34c0f1a81599996f8d59619a2efa887ffda68850f9c2ab941c075986c",
+        "2022Q4": "1bbf1b50724ff4048d8113ceced08b53707b19c4d6fd5cf47add01329ea7c534",
+        "2023Q1": "3b5d7ee3fc78990bdde16db9e4a43f448344f2cecb835bfc6b7cbcecf726d8e6",
+        "2023Q2": "e7f2f051317adf1561063d8241a64a015bc1694d64586386160eb60045f822fa",
+        "2023Q3": "86120ac44667eaeed9551a53ea8af20ef33fe1fbdf835a52662e52fb7077dbb6",
+        "2023Q4": "7e6b72848ed670900eaf78d24983c845f077091f71ffa7b9c310d590faebac62",
+        "2024Q1": "12a086c473666c2c323c13ae82e0cf333ac2c8e63538ec5488054fcad5d5ae18",
+        "2024Q2": "5d4d58828916a3823ae12c97d64d2849723d964793e4d1e436d98833f72ff05b",
+        "2024Q3": "c13ce123e26e12d1533ebf494e482e7ae697d18b7169b9627f8b576a75111030",
+        "2024Q4": "3866a1ccc5b08fcbc35c333239efd651ca08fa861244ac90f73d46ca5b17ab59",
+        "2025Q1": "51c1dc440733fbbb0b6913b5382ce5b9a3510642a0c6bfd6239d26aa18346b69",
+        "2025Q2": "e731a72f1c85b79c5d86706d9f8708cc2f4cef75c0a9caac7c28074da02a9074",
+        "2025Q3": "a02b89ba6bc56e7c8c197f44389f1d3a816fe1bc2c1374b70a50dacf3d7012c3",
+        "2025Q4": "1a31e6fdedd7442ffb0cd9d0dc8d2d27ee738e5ee2da34e629d82e47f8d418b6",
+        "2026Q1": "ed36733361701ed5cf9bf240be4a360a765126e9ca06b3e5fd3fae7fe2ae5813",
+        "2026Q2": "90213500721ecaf976ee45d8ad04aa2dbb80861d93c87fef67ccaf515919bf2a"
+      },
+      "flag_counts": {
+        "all_four": null,
+        "all_four_including_insufficient": null,
+        "bcpnn": 1393815,
+        "bcpnn_including_insufficient": 1393815,
+        "haldane_anscombe_corrected": 416890,
+        "insufficient": 5797718,
+        "mgps": 1133092,
+        "mgps_including_insufficient": 1133092,
+        "prr": 1623081,
+        "prr_including_insufficient": 4039013,
+        "ror": 1693733,
+        "ror_including_insufficient": 1693733,
+        "three_of_four": 1393815,
+        "three_of_four_including_insufficient": 1393815
+      },
+      "ic_divergence": {
+        "max_absolute": 22.546467923308555,
+        "median_absolute": 1.5099960685468967,
+        "share_above_one": 0.5776303547666519
+      },
+      "mgps": {
+        "hyperparameters": {
+          "alpha1": 1e-06,
+          "alpha2": 0.18172296860385487,
+          "beta1": 0.0018756922819560243,
+          "beta2": 0.26074066667408924,
+          "iterations": 52,
+          "n_pairs_fitted": 8583614,
+          "n_rows_after_squashing": 497975,
+          "neg_log_likelihood": 16580220.177831749,
+          "on_boundary": [
+            "alpha1"
+          ],
+          "p": 0.15254235910542072
+        },
+        "note": "The gamma mixture prior converged onto a bound, so EBGM and EBGM05 are written but are not measurements and must not be quoted. flag_all_four is null for the same reason; flag_three_of_four is what this run supports.",
+        "provisional": true
+      },
+      "pairs": {
+        "at_or_above_min_a": 2785896,
+        "observed_and_written": 8583614
+      },
+      "params": {
+        "drug_key": "raw_string",
+        "end_quarter": null,
+        "min_a": 3,
+        "role_codes": "PS,SS",
+        "roles": "ps_ss",
+        "start_quarter": null
+      },
+      "performance": {
+        "peak_rss_bytes": 8759873536,
+        "peak_rss_gib": 8.158,
+        "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+        "seconds": 433.36
+      },
+      "population": {
+        "cases_with_no_coded_term": 49,
+        "cases_with_no_drug_row_in_scope": 469,
+        "deduplicated_cases": 16054992,
+        "duplicates_removed": 4479514
+      },
+      "run_id": "20260815T141716Z"
+    },
+    {
+      "code_sha": "9583b8018ba55c95b5dc28b34b83611f8fe59dfe",
+      "created_at": "2026-08-15T14:31:46.374096+00:00",
+      "data_snapshot": {
+        "2012Q4": "20562c821eebd248445b7618ad63222acbe45ecb90e9fa384c07a82516661368",
+        "2013Q1": "31df3e518d400a8ba0323629dd4c64809370f5d1c2e4d0711b32997066dcfc49",
+        "2013Q2": "1f954f7561f8c9408a7547fcbcbc786a7329b2fad78dca86ab67cb85188d7e39",
+        "2013Q3": "e440ac13442f573fdeae216dad5d2ffa5e24fb4815625fb5c0915068c72a7fd5",
+        "2013Q4": "2e36bab3c85215d3471dbe6562861668b1c2141b23d1d2f5b5bb43d0fe9b9c8e",
+        "2014Q1": "86836c2acd70848d0bc4eaa776247cbc4da08625400b949f2ccff38e64943031",
+        "2014Q2": "2fad8b257781c5c39c7f414355abdb11bf405efad897cf8cca16c393784e6405",
+        "2014Q3": "8b8b79a7381103f5f653ec5c011444e54401bdab1a92e78e6d2bbeca37ce40a2",
+        "2014Q4": "ab5e44fdd430113b1a4eba2262fe4fc0d67d51525328343348eecd7fed7e7f7f",
+        "2015Q1": "ba1fc85963cb55a041dfa3b106550a3c9af4467477b15c65ba6a39509b1d2909",
+        "2015Q2": "218cc382545ecbf8ba738720a5cc9e96253b30040512aecf0395cbb8af340158",
+        "2015Q3": "e87780d538d128908c2f4d8aeacaae548249af16ffd9d19924af8566e13b5f5d",
+        "2015Q4": "b738b69f999a23a46224ac57fbde11971caa21af23be05655b9dac58af003738",
+        "2016Q1": "1df9f39e415fea6aa578946950265e535088ab7ef80523dfe6a6ec9f402ac129",
+        "2016Q2": "7ee2937a94dda400eba9e411c8d95aa4731e020ff080774ba2a5aaf413458494",
+        "2016Q3": "cc1548f46763945f228d91aeceb90f24239a20faa51ffec9abddf32a886d7c7d",
+        "2016Q4": "203a04739b272a0fa7b0ba55b1a932d3825e13156f18cc121f2bae7efc062928",
+        "2017Q1": "8b347d55faae822a896c106681f9af40a9b5d858fef78b8023ae20d49f36c044",
+        "2017Q2": "e61cff7a813c413a1b074b21dd82db926dc34eb285478d8a7b12f1171ba4b8f6",
+        "2017Q3": "eb03aa80d900b9168b8807ed72c94992de2e601a514aab2ba7995b912f9a916a",
+        "2017Q4": "586976e775598f1261cea863703b24a6236c7a16645f4764aec67138d6bce885",
+        "2018Q1": "021761361fa3acebe517cf2d941e96a2a03ce6597fd03dda205b0c94a573395c",
+        "2018Q2": "cde475975ae7342a841c7a04c10618b94bc65555cee93c0215661ed0d65449b5",
+        "2018Q3": "b974e77d35a47e3e5f2d999f57c61037243a89c07f3826f242e20dc8f6063ba7",
+        "2018Q4": "8f659d11b94f04618e1f2202e18779399c3e47e272c03e0bcd023bdceea2e322",
+        "2019Q1": "51229f0e421b49c022ffbaccba696426e0787ca378d8c7b73bd89006f3f5e9e9",
+        "2019Q2": "1910995dfb006f0b97d610716440aa453de6b2d9ff7381fc05f64d442425e5c7",
+        "2019Q3": "7f02a06088a73cbf910f1cd065a685f8d262f34e6c534deedc1b8fa0de155b84",
+        "2019Q4": "ddbac5a8eb09739c968c77c6370de3ceed388c722197574d0a550f3c680a16fc",
+        "2020Q1": "3d5d38ca7aa7b254b472164a47c93f59a7103c0d6201e3b743559b4179db4a5d",
+        "2020Q2": "f9fe8e8b6d285a11018e399f4c3927440a0d8bfb52c7ad1025622388ad05de6a",
+        "2020Q3": "4ed47f09faaf8ea6f52bb1f5c19ca1fce1959d0a7d16a08360071a4a5a623b40",
+        "2020Q4": "22ed5117ddbd4f66577eb07a0d1e28dbfcbe66176400fbfbbda8ff23aa69a27d",
+        "2021Q1": "3432dc656ec0a4700a86f4865676417062ab0fc69067d8505355dca2fb43d563",
+        "2021Q2": "33d90c7ee20aebece837a981705ec6d84839d0ff14b0b0563ed0bc45e189ca6a",
+        "2021Q3": "32db043748af1fedcf03bf2635dcf1aa4dbd5cc4f8440f67ea81c5670f713b36",
+        "2021Q4": "8d41ec8d36aad4de3450840517bd52b8b21271ac936b52cb851f0654ea13a15b",
+        "2022Q1": "76cb17f81e49b145aefb108c7d6d486a8d39a86159e91de2e09f9ad9954c7291",
+        "2022Q2": "3cc5a4fa96ff1ec58da4669e1e415cbf50812beef582244720cfa87a8df70d4f",
+        "2022Q3": "810689d34c0f1a81599996f8d59619a2efa887ffda68850f9c2ab941c075986c",
+        "2022Q4": "1bbf1b50724ff4048d8113ceced08b53707b19c4d6fd5cf47add01329ea7c534",
+        "2023Q1": "3b5d7ee3fc78990bdde16db9e4a43f448344f2cecb835bfc6b7cbcecf726d8e6",
+        "2023Q2": "e7f2f051317adf1561063d8241a64a015bc1694d64586386160eb60045f822fa",
+        "2023Q3": "86120ac44667eaeed9551a53ea8af20ef33fe1fbdf835a52662e52fb7077dbb6",
+        "2023Q4": "7e6b72848ed670900eaf78d24983c845f077091f71ffa7b9c310d590faebac62",
+        "2024Q1": "12a086c473666c2c323c13ae82e0cf333ac2c8e63538ec5488054fcad5d5ae18",
+        "2024Q2": "5d4d58828916a3823ae12c97d64d2849723d964793e4d1e436d98833f72ff05b",
+        "2024Q3": "c13ce123e26e12d1533ebf494e482e7ae697d18b7169b9627f8b576a75111030",
+        "2024Q4": "3866a1ccc5b08fcbc35c333239efd651ca08fa861244ac90f73d46ca5b17ab59",
+        "2025Q1": "51c1dc440733fbbb0b6913b5382ce5b9a3510642a0c6bfd6239d26aa18346b69",
+        "2025Q2": "e731a72f1c85b79c5d86706d9f8708cc2f4cef75c0a9caac7c28074da02a9074",
+        "2025Q3": "a02b89ba6bc56e7c8c197f44389f1d3a816fe1bc2c1374b70a50dacf3d7012c3",
+        "2025Q4": "1a31e6fdedd7442ffb0cd9d0dc8d2d27ee738e5ee2da34e629d82e47f8d418b6",
+        "2026Q1": "ed36733361701ed5cf9bf240be4a360a765126e9ca06b3e5fd3fae7fe2ae5813",
+        "2026Q2": "90213500721ecaf976ee45d8ad04aa2dbb80861d93c87fef67ccaf515919bf2a"
+      },
+      "flag_counts": {
+        "all_four": null,
+        "all_four_including_insufficient": null,
+        "bcpnn": 603100,
+        "bcpnn_including_insufficient": 603100,
+        "haldane_anscombe_corrected": 188504,
+        "insufficient": 3674321,
+        "mgps": 360724,
+        "mgps_including_insufficient": 360724,
+        "prr": 726832,
+        "prr_including_insufficient": 2059181,
+        "ror": 769906,
+        "ror_including_insufficient": 769906,
+        "three_of_four": 603100,
+        "three_of_four_including_insufficient": 603100
+      },
+      "ic_divergence": {
+        "max_absolute": 22.546467923308555,
+        "median_absolute": 1.2340149621254444,
+        "share_above_one": 0.5389532432355351
+      },
+      "mgps": {
+        "hyperparameters": {
+          "alpha1": 1e-06,
+          "alpha2": 0.3129634350889246,
+          "beta1": 0.006016771222791028,
+          "beta2": 0.4929817056934155,
+          "iterations": 26,
+          "n_pairs_fitted": 5189324,
+          "n_rows_after_squashing": 331011,
+          "neg_log_likelihood": 8889498.722583177,
+          "on_boundary": [
+            "alpha1"
+          ],
+          "p": 0.13114911571843305
+        },
+        "note": "The gamma mixture prior converged onto a bound, so EBGM and EBGM05 are written but are not measurements and must not be quoted. flag_all_four is null for the same reason; flag_three_of_four is what this run supports.",
+        "provisional": true
+      },
+      "pairs": {
+        "at_or_above_min_a": 1515003,
+        "observed_and_written": 5189324
+      },
+      "params": {
+        "drug_key": "raw_string",
+        "end_quarter": null,
+        "min_a": 3,
+        "role_codes": "PS",
+        "roles": "ps",
+        "start_quarter": null
+      },
+      "performance": {
+        "peak_rss_bytes": 8422674432,
+        "peak_rss_gib": 7.844,
+        "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+        "seconds": 310.23
+      },
+      "population": {
+        "cases_with_no_coded_term": 49,
+        "cases_with_no_drug_row_in_scope": 1869,
+        "deduplicated_cases": 16054992,
+        "duplicates_removed": 4479514
+      },
+      "run_id": "20260815T142636Z"
+    }
+  ],
+  "written_at": "2026-08-15T14:32:40.410877+00:00"
+}
