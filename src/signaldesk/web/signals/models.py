@@ -128,6 +128,121 @@ class Duplicate(models.Model):
         return f"{self.primaryid} -> {self.canonical_primaryid} ({self.method})"
 
 
+class DrugConcept(models.Model):
+    """An RxNorm ingredient concept, as the statistics will group by it.
+
+    Ingredient level, `IN` or `PIN`. Everything downstream is computed per
+    ingredient, so this is the vocabulary the whole analysis is expressed in.
+    """
+
+    ingredient_rxcui = models.BigIntegerField(primary_key=True)
+    name = models.CharField(max_length=255)
+    tty = models.CharField(max_length=8)
+    #: Populated only if the ATC lookup is scoped into this prompt; null means
+    #: not fetched, which is different from no ATC class existing.
+    atc_code = models.CharField(max_length=16, null=True)
+
+    class Meta:
+        db_table = "drug_concept"
+        ordering: ClassVar = ["name"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.ingredient_rxcui})"
+
+
+class DrugStringMatch(models.Model):
+    """What one distinct source string resolved to.
+
+    Keyed on the string rather than on the drug row. There are 84,589,952 drug
+    rows and 656,589 distinct folded strings across the two source fields, and
+    the mapping is a property of the string: storing it per row would multiply
+    the same judgement 129 times over and make re-running normalization a rewrite
+    of the corpus rather than of the mapping. Per-row resolution is a join, in
+    priority order, in DuckDB. See docs/adr/0004 for why the drug rows are not
+    here to be joined in Postgres.
+
+    `folded_string` is `upper(trim(x))`, which is the form the distinct-string
+    counts were measured on and the form the join back to Parquet applies.
+    `cleaned_string` is what was actually sent to RxNav, so the chain from
+    published string to query is recoverable.
+    """
+
+    class SourceField(models.TextChoices):
+        PROD_AI = "prod_ai", "Active ingredient field"
+        DRUGNAME = "drugname", "Drug name field"
+
+    class Method(models.TextChoices):
+        OVERRIDE = "override", "Curated override"
+        OVERRIDE_NOT_A_DRUG = "override_not_a_drug", "Curated: not a drug"
+        EXACT = "exact", "Exact term match"
+        APPROXIMATE = "approximate", "Approximate term match"
+        UNMATCHED = "unmatched", "No match above the floor"
+
+    id = models.BigAutoField(primary_key=True)
+    source_field = models.CharField(max_length=16, choices=SourceField.choices)
+    folded_string = models.TextField()
+    cleaned_string = models.TextField()
+    #: The concept the string matched, which is not necessarily an ingredient:
+    #: a brand or a clinical drug resolves to one through `related`.
+    rxcui = models.BigIntegerField(null=True)
+    match_method = models.CharField(max_length=24, choices=Method.choices)
+    #: RxNav's approximate score, recorded because it was returned, not because
+    #: it is a confidence. It tracks query length; see docs/adr/0008.
+    match_score = models.FloatField(null=True)
+    #: Which candidate resolved to an ingredient. Rank 1 can resolve to none.
+    candidate_rank = models.IntegerField(null=True)
+    #: Components a combination string was split into, and how many resolved.
+    #: A partially resolved combination is a shortened ingredient set, so the
+    #: shortfall is recorded rather than left to be inferred from a count of
+    #: associated rows.
+    components_total = models.IntegerField(default=1)
+    components_matched = models.IntegerField(default=0)
+    retrieved_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "drug_string_match"
+        ordering: ClassVar = ["source_field", "folded_string"]
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=["source_field", "folded_string"], name="drug_string_match_unique"
+            )
+        ]
+        indexes: ClassVar = [
+            models.Index(fields=["match_method"], name="drug_string_method_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.folded_string} -> {self.rxcui} ({self.match_method})"
+
+
+class DrugStringIngredient(models.Model):
+    """One ingredient a string resolved to, of possibly several.
+
+    A combination product is several ingredients, and picking one of them would
+    be a fabricated simplification: the whole set is recorded, in the order the
+    components appeared in the string.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    match = models.ForeignKey(DrugStringMatch, on_delete=models.CASCADE, related_name="ingredients")
+    ingredient = models.ForeignKey(
+        DrugConcept, on_delete=models.PROTECT, related_name="string_matches"
+    )
+    ordinal = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = "drug_string_ingredient"
+        ordering: ClassVar = ["match", "ordinal"]
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=["match", "ingredient"], name="drug_string_ingredient_unique"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.match_id} -> {self.ingredient_id}"
+
+
 class IngestManifest(models.Model):
     """One row per ingested unit, making the pipeline resumable and idempotent.
 

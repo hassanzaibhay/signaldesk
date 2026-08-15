@@ -18,8 +18,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from signaldesk.core.errors import IngestError
 from signaldesk.core.logging import get_logger
-from signaldesk.ingest.faers.dedup import DedupStats
+from signaldesk.ingest.faers.dedup import ChainReport, DedupStats
 from signaldesk.ingest.faers.pipeline import QuarterResult
 
 log = get_logger(__name__)
@@ -33,6 +34,8 @@ def build_report(
     *,
     version_pairs: int = 0,
     corpus: dict[str, dict[str, int]] | None = None,
+    postgres_cases: int | None = None,
+    chains: ChainReport | None = None,
 ) -> dict[str, Any]:
     """Assemble the report from what the run actually measured.
 
@@ -40,6 +43,12 @@ def build_report(
     accumulated during ingest. When present they take precedence, because they
     describe the corpus as it exists rather than as one run happened to see it,
     and they survive a report rebuilt long after the ingest.
+
+    `postgres_cases` is required whenever duplicate figures are reported. The
+    flag counts come from `faers_duplicate` in Postgres, and an earlier version
+    of this report divided them by the Parquet publication total, which is 707
+    rows larger. Both terms of every rate now come from the same store, and each
+    figure says which store that is.
     """
     ingested = [result for result in results if not result.skipped]
 
@@ -121,12 +130,29 @@ def build_report(
         }
 
     if dedup is not None:
-        total_cases = (corpus or {}).get("case_field_nulls", {}).get("cases", cases)
+        if postgres_cases is None:
+            message = (
+                "the duplicate rates need a Postgres case count: the flag counts "
+                "come from faers_duplicate, and dividing them by the Parquet "
+                "publication total mixes two stores across the gap ADR 0004 records"
+            )
+            raise IngestError(message)
+        parquet_cases = (corpus or {}).get("case_field_nulls", {}).get("cases", cases)
+        report["corpus_totals"] = {
+            "cases_postgres": postgres_cases,
+            "cases_parquet": parquet_cases,
+            "gap": parquet_cases - postgres_cases,
+            "note": (
+                "Parquet holds one row per publication and Postgres one per case. "
+                "Every rate below divides Postgres counts by Postgres counts; the "
+                "Parquet total is reported for reconciliation only. See ADR 0004."
+            ),
+        }
         by_version = dedup.records_flagged_version
         by_probability = dedup.records_flagged_probabilistic
         report["rates"] = _rates(
-            total_cases=total_cases,
-            blockable=dedup.records_considered,
+            total_cases=postgres_cases,
+            blockable=dedup.population,
             flagged_total=dedup.duplicate_records,
             flagged_by_version=by_version if by_version is not None else version_pairs,
             flagged_by_probability=by_probability,
@@ -134,8 +160,16 @@ def build_report(
         report["deduplication"].update(
             {
                 "stage2_source": "stored results" if dedup.from_store else "measured by this pass",
-                "stage2_records_considered": dedup.records_considered,
+                "stage2_population_store": "duckdb over parquet, one row per case",
+                "stage2_flag_store": "postgres faers_duplicate",
+                "stage2_records_evaluated": dedup.records_evaluated,
+                "stage2_population": dedup.population,
+                "stage2_records_compared": dedup.records_considered,
+                "stage2_records_alone_in_block": dedup.records_excluded_single_member_block,
                 "stage2_records_excluded_null_blocking_key": dedup.records_excluded_null_key,
+                "stage2_records_excluded_superseded": dedup.records_excluded_superseded,
+                "stage2_records_excluded_empty_drug_set": dedup.records_excluded_empty_drug_set,
+                "stage2_matches_discarded_superseded": dedup.probabilistic_discarded_superseded,
                 "stage2_excluded_share": round(dedup.excluded_share, 6),
                 # Only a pass measures these. Rebuilt from stored results they
                 # are unavailable, and null says so where zero would not.
@@ -151,12 +185,16 @@ def build_report(
                 "stage2_cross_quarter_share": round(dedup.cross_quarter_share, 6),
                 # Records, not pairs. One record pairs with many, so a rate
                 # computed from pairs runs past 100 percent and means nothing.
-                "stage2_rate": _rate(dedup.duplicate_records, dedup.records_considered),
+                "stage2_rate": _rate(dedup.duplicate_records, dedup.population),
                 "interpretation": (
-                    "The stage 2 rate is a lower bound. Records missing sex, age or "
-                    "country are excluded from blocking entirely rather than matched "
-                    "on the remaining keys, because a null key is not evidence of "
-                    "similarity and relaxing it would manufacture false merges."
+                    "The stage 2 rate is a lower bound. Three classes of case are "
+                    "excluded because the rule cannot reach them and they would "
+                    "otherwise sit in the denominator alone: records missing sex, age "
+                    "or country, since a null key is not evidence of similarity; "
+                    "records stage 1 already superseded; and records with no drug "
+                    "string, which an empty-set comparison scores as dissimilar. A "
+                    "case alone in its block is not excluded - the rule applied and "
+                    "found nothing, which is a legitimate zero."
                 ),
                 "provisional": (
                     "Stage 2 compares raw drug name strings, so one ingredient under "
@@ -166,6 +204,26 @@ def build_report(
                 ),
             }
         )
+
+    if chains is not None:
+        report["chain_verification"] = {
+            "store": "postgres faers_duplicate",
+            "flagged_records": chains.flagged,
+            "resolved_to_an_unflagged_record": chains.resolved_to_unflagged,
+            "resolved_into_a_cycle": chains.resolved_into_cycle,
+            "components": chains.components,
+            "closed_components": chains.closed_components,
+            "records_in_closed_components": chains.records_in_closed_components,
+            "cycles": chains.cycles,
+            "cycle_lengths": list(chains.cycle_lengths),
+            "sound": chains.is_sound,
+            "note": (
+                "The surviving-case count subtracts flagged records from the corpus, "
+                "which assumes every flagged record has a surviving representative. "
+                "Both counts must be zero for that to hold; a closed component is a "
+                "set of cases removed outright rather than merged into a survivor."
+            ),
+        }
 
     return report
 
@@ -205,16 +263,22 @@ def _rates(
             "numerator": flagged_by_version,
             "denominator": total_cases,
             "population": "every case in the corpus",
+            "store": "postgres",
             "rate": _rate(flagged_by_version, total_cases),
             "status": (
                 "Settled. Version supersession is the published rule applied "
                 "deterministically, not an estimate."
             ),
         },
-        "stage2_matched_of_blockable_cases": {
+        "stage2_matched_of_eligible_cases": {
             "numerator": probabilistic,
             "denominator": blockable,
-            "population": "cases with a complete blocking key",
+            "population": (
+                "cases the rule can apply to: stage 1 survivors with a complete "
+                "blocking key and a non-empty drug set, including those alone in "
+                "their block"
+            ),
+            "store": "postgres numerator, duckdb over parquet denominator, one row per case",
             "rate": _rate(probabilistic, blockable),
             "status": provisional,
         },
@@ -222,10 +286,19 @@ def _rates(
             "numerator": flagged_total,
             "denominator": total_cases,
             "population": "every case in the corpus",
+            "store": "postgres",
             "rate": _rate(flagged_total, total_cases),
             "status": provisional,
         },
-        "unique_cases": max(total_cases - flagged_total, 0),
+        "unique_cases": {
+            "count": max(total_cases - flagged_total, 0),
+            "store": "postgres",
+            "note": (
+                "Cases minus flagged records, both counted in Postgres. Sound only "
+                "while every flagged record's canonical chain ends at an unflagged "
+                "record; see chain_verification."
+            ),
+        },
     }
 
 
@@ -268,15 +341,16 @@ def render(report: dict[str, Any]) -> str:
         lines.append("duplicate rates, each against the population its rule applies to")
         for key in (
             "stage1_superseded_of_all_cases",
-            "stage2_matched_of_blockable_cases",
+            "stage2_matched_of_eligible_cases",
             "overall_duplicate_of_all_cases",
         ):
             entry = rates[key]
             lines.append(
                 f"  {key:<38} {entry['rate']:>8.2%}"
-                f"  ({entry['numerator']:,} / {entry['denominator']:,}, {entry['population']})"
+                f"  ({entry['numerator']:,} / {entry['denominator']:,}, {entry['store']})"
             )
-        lines.append(f"  {'unique cases':<38} {rates['unique_cases']:>8,}")
+        unique = rates["unique_cases"]
+        lines.append(f"  {'unique cases':<38} {unique['count']:>8,}  ({unique['store']})")
 
     dedup = report["deduplication"]
     lines.append("")
@@ -306,8 +380,19 @@ def render(report: dict[str, Any]) -> str:
         lines.append(
             f"  stage 2 cross-quarter share        {dedup['stage2_cross_quarter_share']:>12.4%}"
         )
+        for key, label in [
+            ("stage2_population", "population, rule applies"),
+            ("stage2_records_compared", "of those, compared"),
+            ("stage2_records_alone_in_block", "of those, alone in block"),
+            ("stage2_records_excluded_null_blocking_key", "excluded, null blocking key"),
+            ("stage2_records_excluded_superseded", "excluded, superseded by stage 1"),
+            ("stage2_records_excluded_empty_drug_set", "excluded, empty drug set"),
+        ]:
+            lines.append(f"  {label:<34}{dedup[key]:>12,}")
+        discarded = dedup.get("stage2_matches_discarded_superseded")
         lines.append(
-            f"  excluded, null blocking key        {dedup['stage2_records_excluded_null_blocking_key']:>12,}"
+            f"  {'matches discarded, superseded':<34}"
+            + (f"{discarded:>12,}" if discarded is not None else "  not recorded")
         )
         lines.append(
             f"  excluded share                     {dedup['stage2_excluded_share']:>12.4%}"
@@ -325,6 +410,17 @@ def render(report: dict[str, Any]) -> str:
             lines.append(
                 f"  {label:<34}" + (f"{value:>12,}" if value is not None else "  not recorded")
             )
+
+    chains = report.get("chain_verification")
+    if chains:
+        lines.append("")
+        lines.append("chain verification (postgres faers_duplicate)")
+        lines.append(f"  {'closed components':<34}{chains['closed_components']:>12,}")
+        lines.append(f"  {'cycles':<34}{chains['cycles']:>12,}")
+        lines.append(
+            f"  {'records with no survivor':<34}{chains['records_in_closed_components']:>12,}"
+        )
+        lines.append(f"  {'sound':<34}{chains['sound']!s:>12}")
 
     coverage = report["prod_ai_coverage"]
     lines.append("")

@@ -57,7 +57,7 @@ from __future__ import annotations
 import json
 import math
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import islice
@@ -68,6 +68,7 @@ from django.db import transaction
 
 from signaldesk.core.config import Settings, get_settings
 from signaldesk.core.db import connect
+from signaldesk.core.errors import IngestError
 from signaldesk.core.logging import get_logger
 from signaldesk.ingest.faers.load import parquet_root
 from signaldesk.ingest.faers.quarter import Quarter
@@ -100,6 +101,22 @@ class DedupStats:
 
     records_considered: int = 0
     records_excluded_null_key: int = 0
+    #: Records stage 1 already resolved. They are not compared: a match on a
+    #: record the published rule has withdrawn cannot reach the numerator, so
+    #: leaving them in the population would put them in the denominator alone.
+    records_excluded_superseded: int = 0
+    #: Records with no usable drug string. ``jaccard`` treats an empty set as
+    #: dissimilar, so these can never match either, for the same reason.
+    records_excluded_empty_drug_set: int = 0
+    #: In the population and eligible, but alone in their block, so nothing was
+    #: ever compared against them. Named rather than left implicit: the gap
+    #: between this count and the staged count is what made the pass and the
+    #: store disagree in P02.
+    records_excluded_single_member_block: int = 0
+    #: Probabilistic matches dropped at write time because the flagged record was
+    #: already superseded. Zero once the population excludes them, and recorded
+    #: rather than inferred so the quantity survives in stored state.
+    probabilistic_discarded_superseded: int | None = None
     #: Set when the figures were rebuilt from stored results rather than
     #: measured by a pass, so the report can say which are unavailable.
     from_store: bool = False
@@ -119,14 +136,28 @@ class DedupStats:
 
     @property
     def duplicate_records(self) -> int:
-        """Records judged to duplicate another one.
+        """Records flagged by either rule.
 
         Not the same as `duplicate_pairs`, and the difference is large: one
         record can pair with many others, so pairs run to tens of millions while
         the records they implicate run to a few million. A rate computed from
         pairs exceeds 100 percent and means nothing. Rates use this.
+
+        Set by whatever wrote the duplicate table, so it means the same thing on
+        both paths. It used to fall back to `len(self.pairs)`, which counts only
+        the probabilistic side, so a report built from a measured pass divided by
+        a total that excluded every stage 1 flag: the first P03 artifact printed a
+        stage 2 numerator of zero and a surviving count 2.85 million too high.
+        There is no fallback now - an unset count raises rather than reporting a
+        number that means something else.
         """
-        return self.records_flagged if self.records_flagged is not None else len(self.pairs)
+        if self.records_flagged is None:
+            message = (
+                "flag counts were never recorded on these statistics, so no rate "
+                "can be computed from them"
+            )
+            raise IngestError(message)
+        return self.records_flagged
 
     @property
     def cross_quarter_share(self) -> float:
@@ -145,8 +176,36 @@ class DedupStats:
         return self.cross_quarter_pairs / denominator
 
     @property
+    def population(self) -> int:
+        """The denominator a stage 2 rate is reported against.
+
+        Cases the rule can actually apply to: they survive stage 1, carry a
+        complete blocking key, and have a drug set to compare. A case alone in
+        its block is in the population and simply finds no partner, which is a
+        legitimate zero rather than an exclusion, so it is added back explicitly
+        instead of being left as a gap between the pass and the store.
+
+        The three exclusions are outside this number by design. A superseded
+        record, an unblockable record and a record with no drugs cannot reach the
+        numerator, so counting them in the denominator reports a rate against a
+        population the rule was never applied to. That was P02's defect.
+        """
+        return self.records_considered + self.records_excluded_single_member_block
+
+    @property
+    def records_evaluated(self) -> int:
+        """Every case the pass looked at, whatever became of it."""
+        return (
+            self.population
+            + self.records_excluded_null_key
+            + self.records_excluded_superseded
+            + self.records_excluded_empty_drug_set
+        )
+
+    @property
     def excluded_share(self) -> float:
-        total = self.records_considered + self.records_excluded_null_key
+        """Share of everything looked at that could not be blocked."""
+        total = self.records_evaluated
         return self.records_excluded_null_key / total if total else 0.0
 
 
@@ -202,6 +261,31 @@ def is_duplicate(
     return drug_similarity >= DRUG_THRESHOLD and reaction_similarity >= REACTION_THRESHOLD
 
 
+def survivor_key(record: BlockRecord) -> tuple[str, int]:
+    """The order that decides which of two matching records is kept.
+
+    Most recently received first, then the higher identifier. The second term is
+    not decoration: ``fda_dt`` ties are common, and an order that is only a
+    partial order lets argument position decide the survivor. Position is
+    scoring order, which is not data, and a direction chosen that way can
+    disagree with the direction stage 1 chose for the same records. That is one
+    of the two arbitrary choices behind the 17 closed components in P02, which
+    removed 38 cases with no survivor between them; the other is the canonical
+    kept in ``_compare_block``. Which component came from which is not
+    recoverable - see ADR 0005.
+
+    ``primaryid`` is unique per record, so this is a total order.
+    """
+    return (record.fda_dt, record.primaryid)
+
+
+def choose_survivor(left: BlockRecord, right: BlockRecord) -> tuple[BlockRecord, BlockRecord]:
+    """Return ``(survivor, superseded)``, independent of argument position."""
+    if survivor_key(left) > survivor_key(right):
+        return left, right
+    return right, left
+
+
 def prefix_length(size: int, threshold: float) -> int:
     """Tokens that must be indexed for a set to be findable at this threshold."""
     return max(1, size - math.ceil(threshold * size) + 1)
@@ -250,15 +334,24 @@ def stage2(
     stats = DedupStats()
     root = parquet_root(settings)
     seen: dict[int, tuple[int, float, float, bool]] = {}
+    best: dict[int, tuple[str, int]] = {}
 
     with connect(settings) as handle:
-        stats.records_excluded_null_key = _count_excluded(handle, root, start=start, end=end)
-        _stage_input(handle, root, start=start, end=end)
+        counts = stage_population(handle, root, start=start, end=end)
+        _apply_counts(stats, counts)
 
+        streamed = 0
         for members in _blocks(handle):
-            stats.records_considered += len(members)
             stats.blocks += 1
-            _compare_block(members, stats, seen)
+            streamed += len(members)
+            _compare_block(members, stats, seen, best)
+
+    # The denominator is counted in SQL and the comparison reads the same table.
+    # If those two disagree the rate is computed over a population that was not
+    # the one compared, which is the failure this whole pass exists to avoid.
+    if streamed != counts.compared:
+        message = f"staged {counts.compared} records but streamed {streamed}"
+        raise IngestError(message)
 
     stats.pairs = [
         (primaryid, canonical, drug_similarity, reaction_similarity, cross_quarter)
@@ -287,8 +380,17 @@ def _compare_block(
     members: list[BlockRecord],
     stats: DedupStats,
     seen: dict[int, tuple[int, float, float, bool]],
+    best: dict[int, tuple[str, int]],
 ) -> None:
-    """Score one block, recording the duplicates it contains."""
+    """Score one block, recording the duplicates it contains.
+
+    `best` holds the survivor key already recorded for each flagged record, so a
+    record matching several others keeps the strongest of them rather than
+    whichever comparison ran last. Without it the canonical was decided by
+    scoring order: the same arbitrary-choice defect as the tie-break, one level
+    up, and it produced chains through the middle of a block instead of pointing
+    every member at the record that actually survives it.
+    """
     size = len(members)
     stats.largest_block = max(stats.largest_block, size)
     stats.naive_comparisons += size * (size - 1) // 2
@@ -322,11 +424,16 @@ def _compare_block(
             continue
 
         # The most recently received report is kept as canonical.
-        survivor, superseded = (left, right) if left.fda_dt >= right.fda_dt else (right, left)
+        survivor, superseded = choose_survivor(left, right)
         cross_quarter = left.quarter != right.quarter
         stats.duplicate_pairs += 1
         if cross_quarter:
             stats.cross_quarter_pairs += 1
+        key = survivor_key(survivor)
+        recorded = best.get(superseded.primaryid)
+        if recorded is not None and key <= recorded:
+            continue
+        best[superseded.primaryid] = key
         seen[superseded.primaryid] = (
             survivor.primaryid,
             drug_similarity,
@@ -344,28 +451,105 @@ def _quarter_filter(start: Quarter | None, end: Quarter | None) -> str:
     return (" AND " + " AND ".join(clauses)) if clauses else ""
 
 
-def _stage_input(
+def block_key_sql(alias: str = "") -> str:
+    """The block key in SQL, written once so no caller can spell it differently.
+
+    ``(sex, rounded age, country)``. The staging QUALIFY and every count over the
+    population share this, because a partition expression that differs by a
+    ``round`` in one place is a defect nothing would surface.
+    """
+    prefix = f"{alias}." if alias else ""
+    return f"{prefix}sex, round({prefix}age_years), {prefix}country"
+
+
+@dataclass(frozen=True, slots=True)
+class PopulationCounts:
+    """How every case the pass looked at was classified.
+
+    The four terms partition ``evaluated`` exactly. A rate reported against
+    anything other than ``eligible`` is reported against a population the rule
+    was not applied to.
+    """
+
+    evaluated: int
+    eligible: int
+    compared: int
+    single_member_block: int
+    excluded_superseded: int
+    excluded_null_key: int
+    excluded_empty_drug_set: int
+
+
+def _survivors_sql(source: str) -> str:
+    """Cross-quarter stage 1 survivors: the highest version of each case.
+
+    One definition, used by the population builder and by
+    ``resolve_versions_across_quarters``. Two copies of this rule that drift
+    apart would put a record in one stage's output and the other's input.
+    """
+    return f"""
+        SELECT primaryid, caseid, caseversion,
+               first_value(primaryid) OVER (
+                   PARTITION BY caseid ORDER BY caseversion DESC, primaryid DESC
+               ) AS survivor
+        FROM {source}
+    """
+
+
+def stage_population(
     handle: duckdb.DuckDBPyConnection,
     root: object,
     *,
-    start: Quarter | None,
-    end: Quarter | None,
-) -> None:
-    """Materialise the deduplication input to disk, in stages.
+    start: Quarter | None = None,
+    end: Quarter | None = None,
+) -> PopulationCounts:
+    """Build the deduplication input on disk and count what did not reach it.
 
-    Twenty million cases joined against fifty million drug rows and forty-five
-    million reaction rows, collapsed into per-case sets, does not fit in memory,
-    and no memory limit makes it fit: the working set grows with the corpus.
+    Twenty million cases joined against eighty-four million drug rows and
+    sixty-six million reaction rows, collapsed into per-case sets, does not fit
+    in memory, and no memory limit makes it fit: the working set grows with the
+    corpus. So it is built as tables rather than returned as a result. Each
+    CREATE TABLE streams to the database file instead of accumulating a result
+    for the client.
 
-    So it is built as tables rather than returned as a result. Each CREATE TABLE
-    streams its output to the database file instead of accumulating it for the
-    client, and the expensive grouping happens once rather than once per read.
+    Counting happens here rather than in the caller because the pass and the
+    report must not compute the population two different ways. In P02 they did,
+    and the store-derived denominator exceeded the compared one by 4,646 with
+    nothing in the code saying so.
+
+    Three classes of case are excluded, each because it cannot reach the
+    numerator and would otherwise sit in the denominator alone:
+
+    * **superseded** - stage 1 already resolved it to a later version;
+    * **null key** - it cannot be blocked, and a null key is not evidence of
+      similarity;
+    * **empty drug set** - ``jaccard`` scores an empty set as dissimilar, so it
+      can never match.
+
+    A case alone in its block is *not* excluded. The rule applies to it and finds
+    nothing, which is a legitimate zero, so it stays in the denominator and is
+    reported separately.
     """
     where = _quarter_filter(start, end)
 
-    handle.execute("DROP TABLE IF EXISTS dedup_input")
-    handle.execute("DROP TABLE IF EXISTS dedup_drug")
-    handle.execute("DROP TABLE IF EXISTS dedup_reaction")
+    staged = ("dedup_input", "dedup_drug", "dedup_reaction", "dedup_survivor", "dedup_status")
+    for table in (*staged, "dedup_case"):
+        handle.execute(f"DROP TABLE IF EXISTS {table}")
+
+    # One row per case, not one per publication. The analytical store keeps a
+    # row for each quarter a case was published in, 707 of them corpus-wide, and
+    # every count downstream is a count of cases. Collapsing here means the
+    # population and the flags are counting the same kind of thing, and the
+    # totals agree with Postgres rather than exceeding it. See ADR 0004.
+    log.info("faers.dedup.staging", step="cases")
+    handle.execute(f"""
+        CREATE TABLE dedup_case AS
+        SELECT c.primaryid, c.caseid, c.caseversion, c.quarter, c.sex, c.country,
+               c.age_years, coalesce(c.fda_dt::VARCHAR, '') AS fda_dt
+        FROM read_parquet('{root}/case/*/*.parquet', hive_partitioning := true) c
+        WHERE 1 = 1 {where}
+        QUALIFY row_number() OVER (PARTITION BY c.primaryid ORDER BY c.quarter DESC) = 1
+    """)
 
     log.info("faers.dedup.staging", step="drug_sets")
     handle.execute(f"""
@@ -385,20 +569,84 @@ def _stage_input(
         GROUP BY primaryid
     """)
 
+    log.info("faers.dedup.staging", step="stage1_survivors")
+    handle.execute(f"""
+        CREATE TABLE dedup_survivor AS
+        SELECT DISTINCT primaryid FROM ({_survivors_sql("dedup_case")}) ranked
+        WHERE primaryid = survivor
+    """)
+
+    log.info("faers.dedup.staging", step="classify")
+    handle.execute("""
+        CREATE TABLE dedup_status AS
+        SELECT c.primaryid,
+               CASE
+                   WHEN s.primaryid IS NULL THEN 'superseded'
+                   WHEN c.sex IS NULL OR c.country IS NULL OR c.age_years IS NULL
+                       THEN 'null_key'
+                   WHEN d.primaryid IS NULL THEN 'empty_drug_set'
+                   ELSE 'eligible'
+               END AS status
+        FROM dedup_case c
+        LEFT JOIN dedup_survivor s USING (primaryid)
+        LEFT JOIN dedup_drug d USING (primaryid)
+    """)
+
     log.info("faers.dedup.staging", step="blockable_cases")
     handle.execute(f"""
         CREATE TABLE dedup_input AS
         SELECT c.primaryid, c.caseid, c.quarter, c.sex, c.country,
-               round(c.age_years) AS age_r, coalesce(c.fda_dt::VARCHAR, '') AS fda_dt,
+               round(c.age_years) AS age_r, c.fda_dt,
                coalesce(d.drugs, []) AS drugs, coalesce(r.reactions, []) AS reactions
-        FROM read_parquet('{root}/case/*/*.parquet', hive_partitioning := true) c
-        LEFT JOIN dedup_drug d USING (primaryid)
-        LEFT JOIN dedup_reaction r USING (primaryid)
-        WHERE c.sex IS NOT NULL AND c.country IS NOT NULL AND c.age_years IS NOT NULL {where}
-        QUALIFY count(*) OVER (PARTITION BY c.sex, round(c.age_years), c.country) > 1
+        FROM dedup_case c
+        JOIN dedup_status st ON st.primaryid = c.primaryid AND st.status = 'eligible'
+        LEFT JOIN dedup_drug d ON d.primaryid = c.primaryid
+        LEFT JOIN dedup_reaction r ON r.primaryid = c.primaryid
+        QUALIFY count(*) OVER (PARTITION BY {block_key_sql("c")}) > 1
     """)
     handle.execute("DROP TABLE dedup_drug")
     handle.execute("DROP TABLE dedup_reaction")
+
+    return _population_counts(handle)
+
+
+def _population_counts(handle: duckdb.DuckDBPyConnection) -> PopulationCounts:
+    """Read the classification back, from the tables the pass will compare."""
+    by_status = dict(
+        handle.execute("SELECT status, count(*) FROM dedup_status GROUP BY status").fetchall()
+    )
+    compared_row = handle.execute("SELECT count(*) FROM dedup_input").fetchone()
+    compared = int(compared_row[0]) if compared_row else 0
+    eligible = int(by_status.get("eligible", 0))
+    counts = PopulationCounts(
+        evaluated=sum(int(value) for value in by_status.values()),
+        eligible=eligible,
+        compared=compared,
+        single_member_block=eligible - compared,
+        excluded_superseded=int(by_status.get("superseded", 0)),
+        excluded_null_key=int(by_status.get("null_key", 0)),
+        excluded_empty_drug_set=int(by_status.get("empty_drug_set", 0)),
+    )
+    log.info(
+        "faers.dedup.population",
+        evaluated=counts.evaluated,
+        eligible=counts.eligible,
+        compared=counts.compared,
+        alone_in_block=counts.single_member_block,
+        superseded=counts.excluded_superseded,
+        null_key=counts.excluded_null_key,
+        empty_drug_set=counts.excluded_empty_drug_set,
+    )
+    return counts
+
+
+def _apply_counts(stats: DedupStats, counts: PopulationCounts) -> None:
+    """Copy a population classification onto the run's statistics."""
+    stats.records_considered = counts.compared
+    stats.records_excluded_single_member_block = counts.single_member_block
+    stats.records_excluded_superseded = counts.excluded_superseded
+    stats.records_excluded_null_key = counts.excluded_null_key
+    stats.records_excluded_empty_drug_set = counts.excluded_empty_drug_set
 
 
 def _blocks(handle: duckdb.DuckDBPyConnection) -> Iterator[list[BlockRecord]]:
@@ -448,25 +696,14 @@ def _blocks(handle: duckdb.DuckDBPyConnection) -> Iterator[list[BlockRecord]]:
             yield current
 
 
-def _count_excluded(
-    handle: duckdb.DuckDBPyConnection,
-    root: object,
-    *,
-    start: Quarter | None,
-    end: Quarter | None,
-) -> int:
-    """Cases that cannot be blocked because a key component is missing."""
-    where = _quarter_filter(start, end)
-    query = f"""
-        SELECT count(*) FROM read_parquet('{root}/case/*/*.parquet', hive_partitioning := true) c
-        WHERE (c.sex IS NULL OR c.country IS NULL OR c.age_years IS NULL) {where}
-    """
-    result = handle.execute(query).fetchone()
-    return int(result[0]) if result else 0
-
-
 def _duplicate_rows(stats: DedupStats, version_pairs: list[tuple[int, int]]) -> Iterator[Duplicate]:
-    """Yield the rows one run produced, without materialising them all."""
+    """Yield the rows one run produced, without materialising them all.
+
+    The skip below is a backstop, not the mechanism. Stage 2's population
+    excludes stage 1 superseded records, so nothing should reach it; the counter
+    exists to say that rather than leave it assumed, and a non-zero value means
+    the population filter is not doing what it claims.
+    """
     for primaryid, canonical in version_pairs:
         yield Duplicate(
             primaryid=primaryid,
@@ -476,8 +713,12 @@ def _duplicate_rows(stats: DedupStats, version_pairs: list[tuple[int, int]]) -> 
         )
 
     superseded = {primaryid for primaryid, _ in version_pairs}
+    discarded = 0
+    stats.probabilistic_discarded_superseded = discarded
     for primaryid, canonical, drug_similarity, reaction_similarity, cross_quarter in stats.pairs:
         if primaryid in superseded:
+            discarded += 1
+            stats.probabilistic_discarded_superseded = discarded
             continue
         yield Duplicate(
             primaryid=primaryid,
@@ -497,18 +738,17 @@ def stats_from_store(settings: Settings | None = None) -> DedupStats:
     the two comparison counts - is recoverable: the corpus is on disk and the
     judgements are in the database. Those four are marked unavailable rather
     than defaulted, because a zero there would read as a measurement.
+
+    The population is rebuilt by the same ``stage_population`` the pass runs,
+    not by a second query that means to say the same thing. In P02 it was the
+    second query, it omitted the single-member-block filter, and the store's
+    denominator exceeded the compared one by 4,646 with nothing to catch it.
     """
     settings = settings or get_settings()
     root = parquet_root(settings)
 
     with connect(settings) as handle:
-        considered = handle.execute(
-            f"""
-            SELECT count(*) FROM read_parquet('{root}/case/*/*.parquet', hive_partitioning := true)
-            WHERE sex IS NOT NULL AND country IS NOT NULL AND age_years IS NOT NULL
-            """
-        ).fetchone()
-        excluded = _count_excluded(handle, root, start=None, end=None)
+        counts = stage_population(handle, root)
 
     flagged = Duplicate.objects.values("primaryid").distinct().count()
     by_version = Duplicate.objects.filter(method=METHOD_VERSION).count()
@@ -516,15 +756,15 @@ def stats_from_store(settings: Settings | None = None) -> DedupStats:
     cross_quarter = Duplicate.objects.filter(cross_quarter=True).count()
     log.info("faers.dedup.stats_from_store", flagged=flagged, cross_quarter=cross_quarter)
 
-    return DedupStats(
-        records_considered=int(considered[0]) if considered else 0,
-        records_excluded_null_key=excluded,
+    stats = DedupStats(
         cross_quarter_pairs=cross_quarter,
         records_flagged=flagged,
         records_flagged_version=by_version,
         records_flagged_probabilistic=by_probability,
         from_store=True,
     )
+    _apply_counts(stats, counts)
+    return stats
 
 
 def stats_path(settings: Settings | None = None) -> Path:
@@ -546,6 +786,16 @@ def save_stats(stats: DedupStats, settings: Settings | None = None) -> Path:
         "measured_at": datetime.now(tz=UTC).isoformat(),
         "records_considered": stats.records_considered,
         "records_excluded_null_key": stats.records_excluded_null_key,
+        "records_excluded_superseded": stats.records_excluded_superseded,
+        "records_excluded_empty_drug_set": stats.records_excluded_empty_drug_set,
+        "records_excluded_single_member_block": stats.records_excluded_single_member_block,
+        "probabilistic_discarded_superseded": stats.probabilistic_discarded_superseded,
+        # Carried so a report rebuilt from this file divides by the same counts
+        # the pass wrote, rather than falling back to something that counts one
+        # rule and calls it the total.
+        "records_flagged": stats.records_flagged,
+        "records_flagged_version": stats.records_flagged_version,
+        "records_flagged_probabilistic": stats.records_flagged_probabilistic,
         "blocks": stats.blocks,
         "largest_block": stats.largest_block,
         "comparisons": stats.comparisons,
@@ -568,9 +818,26 @@ def load_stats(settings: Settings | None = None) -> DedupStats | None:
     except (OSError, json.JSONDecodeError):
         log.warning("faers.dedup.stats_unreadable", path=str(path))
         return None
+    discarded = payload.get("probabilistic_discarded_superseded")
+    flagged = payload.get("records_flagged")
+    flagged_version = payload.get("records_flagged_version")
+    flagged_probabilistic = payload.get("records_flagged_probabilistic")
     return DedupStats(
+        records_flagged=None if flagged is None else int(flagged),
+        records_flagged_version=None if flagged_version is None else int(flagged_version),
+        records_flagged_probabilistic=(
+            None if flagged_probabilistic is None else int(flagged_probabilistic)
+        ),
         records_considered=int(payload["records_considered"]),
         records_excluded_null_key=int(payload["records_excluded_null_key"]),
+        # Defaulted rather than required: a stats file written by the previous
+        # pass predates these counts, and a missing count is not a zero one.
+        records_excluded_superseded=int(payload.get("records_excluded_superseded", 0)),
+        records_excluded_empty_drug_set=int(payload.get("records_excluded_empty_drug_set", 0)),
+        records_excluded_single_member_block=int(
+            payload.get("records_excluded_single_member_block", 0)
+        ),
+        probabilistic_discarded_superseded=None if discarded is None else int(discarded),
         blocks=int(payload["blocks"]),
         largest_block=int(payload["largest_block"]),
         comparisons=int(payload["comparisons"]),
@@ -609,6 +876,14 @@ def persist(
         while batch := list(islice(rows, PERSIST_BATCH_ROWS)):
             Duplicate.objects.bulk_create(batch, batch_size=PERSIST_BATCH_ROWS)
             written += len(batch)
+
+    # The flag counts are recorded by whatever wrote the table, which is here.
+    # Every rate downstream divides by them, and a pass that leaves them unset
+    # produces a report whose numerator counts one rule and whose total counts
+    # neither.
+    stats.records_flagged_version = len(version_pairs)
+    stats.records_flagged_probabilistic = written - len(version_pairs)
+    stats.records_flagged = written
     save_stats(stats, settings)
     log.info("faers.dedup.persisted", rows=written)
     return written
@@ -623,22 +898,195 @@ def resolve_versions_across_quarters(settings: Settings | None = None) -> list[t
     """
     settings = settings or get_settings()
     root = parquet_root(settings)
+    source = f"read_parquet('{root}/case/*/*.parquet', hive_partitioning := true)"
     query = f"""
-        WITH ranked AS (
-            SELECT primaryid, caseid, caseversion,
-                   max(caseversion) OVER (PARTITION BY caseid) AS best,
-                   first_value(primaryid) OVER (
-                       PARTITION BY caseid ORDER BY caseversion DESC, primaryid DESC
-                   ) AS survivor
-            FROM read_parquet('{root}/case/*/*.parquet', hive_partitioning := true)
-        )
+        WITH ranked AS ({_survivors_sql(source)})
         -- DISTINCT because a case republished in a later quarter appears once
         -- per quarter it was published in, and this is a statement about the
         -- case identifier, not about the publications.
         SELECT DISTINCT primaryid, survivor FROM ranked
-        WHERE (caseversion IS DISTINCT FROM best OR primaryid <> survivor)
-          AND primaryid <> survivor
+        WHERE primaryid <> survivor
     """
     with connect(settings) as handle:
         rows = handle.execute(query).fetchall()
     return [(int(primaryid), int(survivor)) for primaryid, survivor in rows]
+
+
+@dataclass(frozen=True, slots=True)
+class ChainReport:
+    """What resolving every canonical pointer to its root found.
+
+    The surviving corpus is derived as total minus flagged, and that subtraction
+    assumes every flagged record has a surviving representative: that following
+    canonical pointers from it ends at a record nothing flagged. A component in
+    which every member is flagged breaks the assumption, and the cases in it
+    leave the corpus rather than being merged into a survivor.
+
+    Both counts must be zero before any duplicate rate is reported.
+    """
+
+    edges: int
+    nodes: int
+    flagged: int
+    unflagged: int
+    resolved_to_unflagged: int
+    resolved_into_cycle: int
+    components: int
+    closed_components: int
+    records_in_closed_components: int
+    cycles: int
+    records_in_cycles: int
+    cycle_lengths: tuple[int, ...]
+    closed_component_members: tuple[tuple[int, ...], ...]
+
+    @property
+    def is_sound(self) -> bool:
+        """True when every chain ends at an unflagged record."""
+        return self.closed_components == 0 and self.cycles == 0
+
+
+def resolve_chains(edges: Iterable[tuple[int, int]]) -> ChainReport:
+    """Follow every canonical pointer to its root.
+
+    Pure over the edge list so it can be tested on a hand-built graph with no
+    database. Each flagged record carries exactly one canonical, which makes this
+    a functional graph: a component with no unflagged member necessarily contains
+    a cycle. Both are counted independently anyway, because agreeing is evidence
+    and assuming is not.
+
+    A record with two outgoing pointers means one record was flagged under two
+    rules, which the population rules forbid, so it raises rather than being
+    resolved arbitrarily.
+    """
+    successor: dict[int, int] = {}
+    for primaryid, canonical in edges:
+        if primaryid in successor and successor[primaryid] != canonical:
+            message = (
+                f"record {primaryid} is flagged twice, against {successor[primaryid]} "
+                f"and {canonical}"
+            )
+            raise IngestError(message)
+        successor[primaryid] = canonical
+
+    nodes = set(successor) | set(successor.values())
+    cycles = _find_cycles(successor)
+    in_cycle = {member for cycle in cycles for member in cycle}
+    roots = _resolve_roots(successor, in_cycle)
+
+    parent = _union_components(successor, nodes)
+    members: dict[int, list[int]] = defaultdict(list)
+    unflagged_in_component: set[int] = set()
+    for node in nodes:
+        root = _find(parent, node)
+        members[root].append(node)
+        if node not in successor:
+            unflagged_in_component.add(root)
+
+    closed = tuple(
+        tuple(sorted(group))
+        for root, group in sorted(members.items())
+        if root not in unflagged_in_component
+    )
+    resolved_to_unflagged = sum(1 for node in successor if roots[node] not in successor)
+    return ChainReport(
+        edges=len(successor),
+        nodes=len(nodes),
+        flagged=len(successor),
+        unflagged=len(nodes) - len(successor),
+        resolved_to_unflagged=resolved_to_unflagged,
+        resolved_into_cycle=len(successor) - resolved_to_unflagged,
+        components=len(members),
+        closed_components=len(closed),
+        records_in_closed_components=sum(len(group) for group in closed),
+        cycles=len(cycles),
+        records_in_cycles=len(in_cycle),
+        cycle_lengths=tuple(sorted(len(cycle) for cycle in cycles)),
+        closed_component_members=closed,
+    )
+
+
+def _find_cycles(successor: dict[int, int]) -> list[list[int]]:
+    """Every cycle in the pointer graph, walked iteratively.
+
+    Recursion is not an option: a chain can be as long as the corpus, and the
+    interpreter's stack is not.
+    """
+    unvisited, on_path, done = 0, 1, 2
+    state: dict[int, int] = {}
+    cycles: list[list[int]] = []
+
+    for start in successor:
+        if state.get(start, unvisited) != unvisited:
+            continue
+        path: list[int] = []
+        node = start
+        while True:
+            current = state.get(node, unvisited)
+            if current == done or node not in successor:
+                break
+            if current == on_path:
+                cycles.append(path[path.index(node) :])
+                break
+            state[node] = on_path
+            path.append(node)
+            node = successor[node]
+        for member in path:
+            state[member] = done
+    return cycles
+
+
+def _resolve_roots(successor: dict[int, int], in_cycle: set[int]) -> dict[int, int]:
+    """Where each flagged record's chain ends, memoised along the way.
+
+    A record on a cycle is its own root: its chain ends nowhere, which is the
+    condition this exists to detect, so it is seeded rather than walked.
+    """
+    roots: dict[int, int] = {member: member for member in in_cycle}
+    for start in successor:
+        if start in roots:
+            continue
+        path: list[int] = []
+        node = start
+        while node not in roots and node in successor:
+            path.append(node)
+            node = successor[node]
+        end = roots.get(node, node)
+        for member in path:
+            roots[member] = end
+    return roots
+
+
+def _union_components(successor: dict[int, int], nodes: set[int]) -> dict[int, int]:
+    """Union-find over the edges, ignoring their direction."""
+    parent = {node: node for node in nodes}
+    for left, right in successor.items():
+        left_root, right_root = _find(parent, left), _find(parent, right)
+        if left_root != right_root:
+            parent[left_root] = right_root
+    return parent
+
+
+def _find(parent: dict[int, int], node: int) -> int:
+    while parent[node] != node:
+        parent[node] = parent[parent[node]]
+        node = parent[node]
+    return node
+
+
+def chain_report(settings: Settings | None = None) -> ChainReport:
+    """Resolve the stored duplicate table's pointers. The gate before a delta."""
+    settings = settings or get_settings()
+    edges = Duplicate.objects.values_list("primaryid", "canonical_primaryid").iterator(
+        chunk_size=PERSIST_BATCH_ROWS
+    )
+    report = resolve_chains(edges)
+    log.info(
+        "faers.dedup.chains",
+        flagged=report.flagged,
+        components=report.components,
+        closed_components=report.closed_components,
+        cycles=report.cycles,
+        records_in_closed_components=report.records_in_closed_components,
+        sound=report.is_sound,
+    )
+    return report

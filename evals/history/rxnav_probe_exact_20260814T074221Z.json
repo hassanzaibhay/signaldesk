@@ -1,0 +1,73 @@
+{
+  "base_url": "https://rxnav.nlm.nih.gov/REST",
+  "probed_at": "2026-08-14T07:42:17.114574+00:00",
+  "probes": [
+    {
+      "category": "exact generic",
+      "elapsed_seconds": 2.174,
+      "response": {
+        "idGroup": {
+          "rxnormId": [
+            "6851"
+          ]
+        }
+      },
+      "status": 200,
+      "term": "METHOTREXATE",
+      "url": "https://rxnav.nlm.nih.gov/REST/rxcui.json?name=METHOTREXATE&search=0"
+    },
+    {
+      "category": "exact brand",
+      "elapsed_seconds": 0.326,
+      "response": {
+        "idGroup": {
+          "rxnormId": [
+            "152523"
+          ]
+        }
+      },
+      "status": 200,
+      "term": "ZANTAC",
+      "url": "https://rxnav.nlm.nih.gov/REST/rxcui.json?name=ZANTAC&search=0"
+    },
+    {
+      "category": "exact with salt",
+      "elapsed_seconds": 0.338,
+      "response": {
+        "idGroup": {
+          "rxnormId": [
+            "203136"
+          ]
+        }
+      },
+      "status": 200,
+      "term": "RANITIDINE HYDROCHLORIDE",
+      "url": "https://rxnav.nlm.nih.gov/REST/rxcui.json?name=RANITIDINE+HYDROCHLORIDE&search=0"
+    },
+    {
+      "category": "cleaned but not a term",
+      "elapsed_seconds": 0.358,
+      "response": {
+        "idGroup": {
+          "rxnormId": [
+            "82063"
+          ]
+        }
+      },
+      "status": 200,
+      "term": "OXYCODONE HCL",
+      "url": "https://rxnav.nlm.nih.gov/REST/rxcui.json?name=OXYCODONE+HCL&search=0"
+    },
+    {
+      "category": "not a drug",
+      "elapsed_seconds": 0.453,
+      "response": {
+        "idGroup": {}
+      },
+      "status": 200,
+      "term": "UNSPECIFIED INGREDIENT",
+      "url": "https://rxnav.nlm.nih.gov/REST/rxcui.json?name=UNSPECIFIED+INGREDIENT&search=0"
+    }
+  ],
+  "purpose": "Shape of the exact-name endpoint and of the ingredient lookup used by the exact rung, recorded before the matcher was written."
+}

@@ -137,10 +137,42 @@ class ResponseCache:
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "status": response.status_code,
-            "headers": dict(response.headers),
+            "headers": self._storable_headers(response),
             "content": base64.b64encode(response.content).decode("ascii"),
         }
         path.write_text(json.dumps(payload), encoding="utf-8")
+
+    @staticmethod
+    def _storable_headers(response: httpx.Response) -> dict[str, str]:
+        """Headers that still describe the body once it is on disk.
+
+        `response.content` is already decoded, so keeping the transfer headers
+        alongside it describes the stored bytes wrongly. Replaying a cached
+        response that claimed `Content-Encoding: gzip` made httpx try to
+        decompress plain JSON and raise `DecodingError`, which meant the cache
+        was unusable against any endpoint that compresses - RxNav does. Nothing
+        caught it because the FAERS host is asked for `identity` and mocked
+        responses in tests carry no encoding header.
+        """
+        skip = {"content-encoding", "content-length", "transfer-encoding"}
+        return {name: value for name, value in response.headers.items() if name.lower() not in skip}
+
+
+def is_cached(
+    url: str,
+    *,
+    params: Mapping[str, str] | None = None,
+    settings: Settings | None = None,
+) -> bool:
+    """Whether a GET would be answered from disk without touching the network.
+
+    Callers that rate-limit themselves need this: a limiter placed in front of
+    `get` throttles cache hits as well as requests, which turns a warm re-run
+    over half a million cached lookups into hours of sleeping for nothing.
+    """
+    settings = settings or get_settings()
+    cache = ResponseCache(settings.http_cache_dir)
+    return cache.path_for(ResponseCache.key("GET", url, params)).is_file()
 
 
 def retry_after_seconds(response: httpx.Response) -> float | None:

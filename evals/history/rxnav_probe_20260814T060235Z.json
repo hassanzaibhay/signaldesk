@@ -1,0 +1,871 @@
+{
+  "base_url": "https://rxnav.nlm.nih.gov/REST",
+  "probed_at": "2026-08-14T06:02:20.047965+00:00",
+  "probes": [
+    {
+      "category": "brand name",
+      "elapsed_seconds": 2.496,
+      "ingredient_resolution": {
+        "elapsed_seconds": 0.381,
+        "response": {
+          "relatedGroup": {
+            "conceptGroup": [
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "ranitidine",
+                    "rxcui": "9143",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "IN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "IN"
+              },
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "ranitidine hydrochloride",
+                    "rxcui": "203136",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "PIN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "PIN"
+              }
+            ],
+            "rxcui": null
+          }
+        },
+        "rxcui": "152523",
+        "status": 200,
+        "url": "https://rxnav.nlm.nih.gov/REST/rxcui/152523/related.json?tty=IN+PIN"
+      },
+      "response": {
+        "approximateGroup": {
+          "candidate": [
+            {
+              "rank": "1",
+              "rxaui": "1002190",
+              "rxcui": "152523",
+              "score": "13.391654968261719",
+              "source": "MMSL"
+            },
+            {
+              "name": "Zantac",
+              "rank": "1",
+              "rxaui": "1002191",
+              "rxcui": "152523",
+              "score": "13.391654968261719",
+              "source": "RXNORM"
+            }
+          ],
+          "inputTerm": null
+        }
+      },
+      "status": 200,
+      "term": "ZANTAC",
+      "url": "https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term=ZANTAC&maxEntries=5"
+    },
+    {
+      "category": "generic ingredient",
+      "elapsed_seconds": 1.072,
+      "ingredient_resolution": {
+        "elapsed_seconds": 0.362,
+        "response": {
+          "relatedGroup": {
+            "conceptGroup": [
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "methotrexate",
+                    "rxcui": "6851",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "IN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "IN"
+              },
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "methotrexate sodium",
+                    "rxcui": "287734",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "PIN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "PIN"
+              }
+            ],
+            "rxcui": null
+          }
+        },
+        "rxcui": "6851",
+        "status": 200,
+        "url": "https://rxnav.nlm.nih.gov/REST/rxcui/6851/related.json?tty=IN+PIN"
+      },
+      "response": {
+        "approximateGroup": {
+          "candidate": [
+            {
+              "name": "Methotrexate",
+              "rank": "1",
+              "rxaui": "10283105",
+              "rxcui": "6851",
+              "score": "12.110039710998535",
+              "source": "USP"
+            },
+            {
+              "rank": "1",
+              "rxaui": "10325072",
+              "rxcui": "6851",
+              "score": "12.110039710998535",
+              "source": "GS"
+            },
+            {
+              "name": "methotrexate",
+              "rank": "1",
+              "rxaui": "12251041",
+              "rxcui": "6851",
+              "score": "12.110039710998535",
+              "source": "RXNORM"
+            },
+            {
+              "name": "METHOTREXATE",
+              "rank": "1",
+              "rxaui": "2072304",
+              "rxcui": "6851",
+              "score": "12.110039710998535",
+              "source": "VANDF"
+            },
+            {
+              "rank": "1",
+              "rxaui": "2369859",
+              "rxcui": "6851",
+              "score": "12.110039710998535",
+              "source": "MMSL"
+            },
+            {
+              "rank": "1",
+              "rxaui": "2379353",
+              "rxcui": "6851",
+              "score": "12.110039710998535",
+              "source": "MMSL"
+            },
+            {
+              "name": "methotrexate",
+              "rank": "1",
+              "rxaui": "5481125",
+              "rxcui": "6851",
+              "score": "12.110039710998535",
+              "source": "ATC"
+            },
+            {
+              "name": "methotrexate",
+              "rank": "1",
+              "rxaui": "5481126",
+              "rxcui": "6851",
+              "score": "12.110039710998535",
+              "source": "ATC"
+            },
+            {
+              "rank": "1",
+              "rxaui": "5532557",
+              "rxcui": "6851",
+              "score": "12.110039710998535",
+              "source": "NDDF"
+            },
+            {
+              "name": "Methotrexate",
+              "rank": "1",
+              "rxaui": "8546218",
+              "rxcui": "6851",
+              "score": "12.110039710998535",
+              "source": "DRUGBANK"
+            }
+          ],
+          "inputTerm": null
+        }
+      },
+      "status": 200,
+      "term": "METHOTREXATE",
+      "url": "https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term=METHOTREXATE&maxEntries=5"
+    },
+    {
+      "category": "combination product",
+      "elapsed_seconds": 0.392,
+      "ingredient_resolution": {
+        "elapsed_seconds": 0.368,
+        "response": {
+          "relatedGroup": {
+            "conceptGroup": [
+              {
+                "tty": "IN"
+              },
+              {
+                "tty": "PIN"
+              }
+            ],
+            "rxcui": null
+          }
+        },
+        "rxcui": "214964",
+        "status": 200,
+        "url": "https://rxnav.nlm.nih.gov/REST/rxcui/214964/related.json?tty=IN+PIN"
+      },
+      "response": {
+        "approximateGroup": {
+          "candidate": [
+            {
+              "rank": "1",
+              "rxaui": "8702995",
+              "rxcui": "214964",
+              "score": "15.298592567443848",
+              "source": "MMSL"
+            },
+            {
+              "name": "acetaminophen / hydrocodone bitartrate Pill",
+              "rank": "2",
+              "rxaui": "12844921",
+              "rxcui": "2661624",
+              "score": "14.73471450805664",
+              "source": "RXNORM"
+            }
+          ],
+          "inputTerm": null
+        }
+      },
+      "status": 200,
+      "term": "HYDROCODONE BITARTRATE AND ACETAMINOPHEN",
+      "url": "https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term=HYDROCODONE+BITARTRATE+AND+ACETAMINOPHEN&maxEntries=5"
+    },
+    {
+      "category": "misspelling",
+      "elapsed_seconds": 1.044,
+      "ingredient_resolution": {
+        "elapsed_seconds": 0.373,
+        "response": {
+          "relatedGroup": {
+            "conceptGroup": [
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "acetaminophen",
+                    "rxcui": "161",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "IN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "IN"
+              },
+              {
+                "tty": "PIN"
+              }
+            ],
+            "rxcui": null
+          }
+        },
+        "rxcui": "161",
+        "status": 200,
+        "url": "https://rxnav.nlm.nih.gov/REST/rxcui/161/related.json?tty=IN+PIN"
+      },
+      "response": {
+        "approximateGroup": {
+          "candidate": [
+            {
+              "name": "Acetaminophen",
+              "rank": "1",
+              "rxaui": "10280795",
+              "rxcui": "161",
+              "score": "9.64658260345459",
+              "source": "USP"
+            },
+            {
+              "rank": "1",
+              "rxaui": "10326508",
+              "rxcui": "161",
+              "score": "9.64658260345459",
+              "source": "GS"
+            },
+            {
+              "name": "acetaminophen",
+              "rank": "1",
+              "rxaui": "12250420",
+              "rxcui": "161",
+              "score": "9.64658260345459",
+              "source": "RXNORM"
+            },
+            {
+              "rank": "1",
+              "rxaui": "1832380",
+              "rxcui": "161",
+              "score": "9.64658260345459",
+              "source": "MMSL"
+            },
+            {
+              "rank": "1",
+              "rxaui": "1832393",
+              "rxcui": "161",
+              "score": "9.64658260345459",
+              "source": "MMSL"
+            },
+            {
+              "name": "ACETAMINOPHEN",
+              "rank": "1",
+              "rxaui": "2067548",
+              "rxcui": "161",
+              "score": "9.64658260345459",
+              "source": "VANDF"
+            },
+            {
+              "rank": "1",
+              "rxaui": "2658084",
+              "rxcui": "707705",
+              "score": "9.64658260345459",
+              "source": "MMSL"
+            },
+            {
+              "rank": "1",
+              "rxaui": "4253327",
+              "rxcui": "161",
+              "score": "9.64658260345459",
+              "source": "NDDF"
+            },
+            {
+              "name": "Acetaminophen",
+              "rank": "1",
+              "rxaui": "8387161",
+              "rxcui": "161",
+              "score": "9.64658260345459",
+              "source": "DRUGBANK"
+            }
+          ],
+          "inputTerm": null
+        }
+      },
+      "status": 200,
+      "term": "ACETAMINOPHEN.",
+      "url": "https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term=ACETAMINOPHEN.&maxEntries=5"
+    },
+    {
+      "category": "dosage form embedded",
+      "elapsed_seconds": 0.372,
+      "ingredient_resolution": {
+        "elapsed_seconds": 1.27,
+        "response": {
+          "relatedGroup": {
+            "conceptGroup": [
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "adalimumab",
+                    "rxcui": "327361",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "IN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "IN"
+              },
+              {
+                "tty": "PIN"
+              }
+            ],
+            "rxcui": null
+          }
+        },
+        "rxcui": "1655728",
+        "status": 200,
+        "url": "https://rxnav.nlm.nih.gov/REST/rxcui/1655728/related.json?tty=IN+PIN"
+      },
+      "response": {
+        "approximateGroup": {
+          "candidate": [
+            {
+              "rank": "1",
+              "rxaui": "2934454",
+              "rxcui": "1655728",
+              "score": "16.28638617482281",
+              "source": "MMSL"
+            },
+            {
+              "rank": "2",
+              "rxaui": "13003238",
+              "rxcui": "1655728",
+              "score": "15.741356471664192",
+              "source": "MMX"
+            },
+            {
+              "name": "0.8 ML Humira 40 MG Injection",
+              "rank": "3",
+              "rxaui": "7250425",
+              "rxcui": "352334",
+              "score": "14.936630249023438",
+              "source": "RXNORM"
+            },
+            {
+              "rank": "4",
+              "rxaui": "10279569",
+              "rxcui": "1872980",
+              "score": "14.62592610829902",
+              "source": "MMSL"
+            },
+            {
+              "rank": "5",
+              "rxaui": "10826668",
+              "rxcui": "1921240",
+              "score": "14.588323167866232",
+              "source": "MMSL"
+            }
+          ],
+          "inputTerm": null
+        }
+      },
+      "status": 200,
+      "term": "HUMIRA 40 MG/0.8 ML PEN",
+      "url": "https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term=HUMIRA+40+MG%2F0.8+ML+PEN&maxEntries=5"
+    },
+    {
+      "category": "manufacturer attached",
+      "elapsed_seconds": 0.392,
+      "ingredient_resolution": {
+        "elapsed_seconds": 0.362,
+        "response": {
+          "relatedGroup": {
+            "conceptGroup": [
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "oxycodone",
+                    "rxcui": "7804",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "IN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "IN"
+              },
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "oxycodone hydrochloride",
+                    "rxcui": "82063",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "PIN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "PIN"
+              }
+            ],
+            "rxcui": null
+          }
+        },
+        "rxcui": "2645384",
+        "status": 200,
+        "url": "https://rxnav.nlm.nih.gov/REST/rxcui/2645384/related.json?tty=IN+PIN"
+      },
+      "response": {
+        "approximateGroup": {
+          "candidate": [
+            {
+              "name": "Oxycodone Hydrochloride Tablets",
+              "rank": "1",
+              "rxaui": "10283794",
+              "rxcui": "2645384",
+              "score": "11.039997100830078",
+              "source": "USP"
+            },
+            {
+              "name": "oxycodone hydrochloride Oral Tablet",
+              "rank": "2",
+              "rxaui": "12828307",
+              "rxcui": "2645384",
+              "score": "10.629587173461914",
+              "source": "RXNORM"
+            },
+            {
+              "name": "oxyCODONE hydrochloride Oral Tablet",
+              "rank": "2",
+              "rxaui": "12848448",
+              "rxcui": "2645384",
+              "score": "10.629587173461914",
+              "source": "RXNORM"
+            }
+          ],
+          "inputTerm": null
+        }
+      },
+      "status": 200,
+      "term": "OXYCODONE HCL TABLETS (RHODES 91?490)",
+      "url": "https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term=OXYCODONE+HCL+TABLETS+%28RHODES+91%3F490%29&maxEntries=5"
+    },
+    {
+      "category": "vaccine",
+      "elapsed_seconds": 0.39,
+      "ingredient_resolution": {
+        "elapsed_seconds": 0.365,
+        "response": {
+          "relatedGroup": {
+            "conceptGroup": [
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "SARS-CoV-2 (COVID-19) vaccine, mRNA spike protein",
+                    "rxcui": "2468231",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "IN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "IN"
+              },
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "SARS-CoV-2 (COVID-19) vaccine, mRNA-BNT162b2",
+                    "rxcui": "2468230",
+                    "suppress": "N",
+                    "synonym": "tozinameran",
+                    "tty": "PIN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "PIN"
+              }
+            ],
+            "rxcui": null
+          }
+        },
+        "rxcui": "2468230",
+        "status": 200,
+        "url": "https://rxnav.nlm.nih.gov/REST/rxcui/2468230/related.json?tty=IN+PIN"
+      },
+      "response": {
+        "approximateGroup": {
+          "candidate": [
+            {
+              "name": "Pfizer-BioNTech COVID-19 Vaccine",
+              "rank": "1",
+              "rxaui": "12782061",
+              "rxcui": "2468230",
+              "score": "42.40473556518555",
+              "source": "DRUGBANK"
+            },
+            {
+              "rank": "2",
+              "rxaui": "12620015",
+              "rxcui": "2536538",
+              "score": "39.55656140152614",
+              "source": "MMSL"
+            },
+            {
+              "name": "Pfizer-BioNTech COVID-19 Vaccine 2023-2024",
+              "rank": "3",
+              "rxaui": "13017843",
+              "rxcui": "2728319",
+              "score": "38.26773244965901",
+              "source": "DRUGBANK"
+            },
+            {
+              "rank": "4",
+              "rxaui": "12805547",
+              "rxcui": "2636006",
+              "score": "34.75029512318891",
+              "source": "MMSL"
+            }
+          ],
+          "inputTerm": null
+        }
+      },
+      "status": 200,
+      "term": "PFIZER-BIONTECH COVID-19 VACCINE",
+      "url": "https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term=PFIZER-BIONTECH+COVID-19+VACCINE&maxEntries=5"
+    },
+    {
+      "category": "device",
+      "elapsed_seconds": 0.374,
+      "ingredient_resolution": {
+        "elapsed_seconds": 0.36,
+        "response": {
+          "relatedGroup": {
+            "conceptGroup": [
+              {
+                "tty": "IN"
+              },
+              {
+                "tty": "PIN"
+              }
+            ],
+            "rxcui": null
+          }
+        },
+        "rxcui": "1943489",
+        "status": 200,
+        "url": "https://rxnav.nlm.nih.gov/REST/rxcui/1943489/related.json?tty=IN+PIN"
+      },
+      "response": {
+        "approximateGroup": {
+          "candidate": [
+            {
+              "rank": "1",
+              "rxaui": "9270230",
+              "rxcui": "1943489",
+              "score": "9.243056297302246",
+              "source": "NDDF"
+            },
+            {
+              "rank": "2",
+              "rxaui": "9270231",
+              "rxcui": "1943488",
+              "score": "8.258745193481445",
+              "source": "NDDF"
+            },
+            {
+              "rank": "3",
+              "rxaui": "9166865",
+              "rxcui": "284011",
+              "score": "8.052276563644408",
+              "source": "NDDF"
+            },
+            {
+              "rank": "4",
+              "rxaui": "6808597",
+              "rxcui": "235886",
+              "score": "7.850969649553298",
+              "source": "NDDF"
+            },
+            {
+              "rank": "5",
+              "rxaui": "8228486",
+              "rxcui": "1093018",
+              "score": "7.285605829909444",
+              "source": "NDDF"
+            }
+          ],
+          "inputTerm": null
+        }
+      },
+      "status": 200,
+      "term": "ISSD (INTEGRATED SYRINGE SAFETY DEVICE)",
+      "url": "https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term=ISSD+%28INTEGRATED+SYRINGE+SAFETY+DEVICE%29&maxEntries=5"
+    },
+    {
+      "category": "non-english form",
+      "elapsed_seconds": 0.375,
+      "ingredient_resolution": {
+        "elapsed_seconds": 0.369,
+        "response": {
+          "relatedGroup": {
+            "conceptGroup": [
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "aspirin",
+                    "rxcui": "1191",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "IN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "IN"
+              },
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "acetylsalicylate sodium",
+                    "rxcui": "314293",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "PIN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "PIN"
+              }
+            ],
+            "rxcui": null
+          }
+        },
+        "rxcui": "1191",
+        "status": 200,
+        "url": "https://rxnav.nlm.nih.gov/REST/rxcui/1191/related.json?tty=IN+PIN"
+      },
+      "response": {
+        "approximateGroup": {
+          "candidate": [
+            {
+              "name": "acetylsalicylic acid",
+              "rank": "1",
+              "rxaui": "5478494",
+              "rxcui": "1191",
+              "score": "3.310132664680481",
+              "source": "ATC"
+            },
+            {
+              "name": "acetylsalicylic acid",
+              "rank": "1",
+              "rxaui": "5478495",
+              "rxcui": "1191",
+              "score": "3.310132664680481",
+              "source": "ATC"
+            },
+            {
+              "name": "acetylsalicylic acid",
+              "rank": "1",
+              "rxaui": "5478496",
+              "rxcui": "1191",
+              "score": "3.310132664680481",
+              "source": "ATC"
+            },
+            {
+              "name": "Acetylsalicylic acid",
+              "rank": "1",
+              "rxaui": "8437275",
+              "rxcui": "1191",
+              "score": "3.310132664680481",
+              "source": "DRUGBANK"
+            }
+          ],
+          "inputTerm": null
+        }
+      },
+      "status": 200,
+      "term": "ACETYLSALICYLSAEURE",
+      "url": "https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term=ACETYLSALICYLSAEURE&maxEntries=5"
+    },
+    {
+      "category": "not a drug",
+      "elapsed_seconds": 0.374,
+      "ingredient_resolution": {
+        "elapsed_seconds": 0.37,
+        "response": {
+          "relatedGroup": {
+            "conceptGroup": [
+              {
+                "conceptProperties": [
+                  {
+                    "language": "ENG",
+                    "name": "caviar preparation",
+                    "rxcui": "1425214",
+                    "suppress": "N",
+                    "synonym": "",
+                    "tty": "IN",
+                    "umlscui": ""
+                  }
+                ],
+                "tty": "IN"
+              },
+              {
+                "tty": "PIN"
+              }
+            ],
+            "rxcui": null
+          }
+        },
+        "rxcui": "1425214",
+        "status": 200,
+        "url": "https://rxnav.nlm.nih.gov/REST/rxcui/1425214/related.json?tty=IN+PIN"
+      },
+      "response": {
+        "approximateGroup": {
+          "candidate": [
+            {
+              "name": "Caviar, unspecified",
+              "rank": "1",
+              "rxaui": "10288301",
+              "rxcui": "1425214",
+              "score": "10.17949390411377",
+              "source": "DRUGBANK"
+            },
+            {
+              "name": "Snail, unspecified",
+              "rank": "1",
+              "rxaui": "10288303",
+              "rxcui": "1368534",
+              "score": "10.17949390411377",
+              "source": "DRUGBANK"
+            },
+            {
+              "rank": "1",
+              "rxaui": "12679890",
+              "rxcui": "2569173",
+              "score": "10.17949390411377",
+              "source": "GS"
+            },
+            {
+              "rank": "1",
+              "rxaui": "12680812",
+              "rxcui": "2570267",
+              "score": "10.17949390411377",
+              "source": "NDDF"
+            },
+            {
+              "rank": "1",
+              "rxaui": "12736503",
+              "rxcui": "397",
+              "score": "10.17949390411377",
+              "source": "GS"
+            },
+            {
+              "name": "Quahog, unspecified",
+              "rank": "1",
+              "rxaui": "9276049",
+              "rxcui": "892539",
+              "score": "10.17949390411377",
+              "source": "DRUGBANK"
+            },
+            {
+              "name": "Cod, unspecified",
+              "rank": "1",
+              "rxaui": "9276052",
+              "rxcui": "892543",
+              "score": "10.17949390411377",
+              "source": "DRUGBANK"
+            },
+            {
+              "name": "Salmon, unspecified",
+              "rank": "1",
+              "rxaui": "9276058",
+              "rxcui": "892584",
+              "score": "10.17949390411377",
+              "source": "DRUGBANK"
+            }
+          ],
+          "inputTerm": null
+        }
+      },
+      "status": 200,
+      "term": "UNSPECIFIED INGREDIENT",
+      "url": "https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term=UNSPECIFIED+INGREDIENT&maxEntries=5"
+    }
+  ],
+  "purpose": "Response shape and score range from RxNav approximateTerm, plus the ingredient resolution step, recorded before any matching code exists."
+}

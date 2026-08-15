@@ -1,5 +1,11 @@
 .env
-data/
+data/*
+# The curated override table is a deliverable, not downloaded data. Git cannot
+# re-include a file under an excluded directory, so the exclusion is spelled out
+# level by level.
+!data/overrides/
+data/overrides/*
+!data/overrides/*.csv
 __pycache__/
 *.pyc
 .pytest_cache/

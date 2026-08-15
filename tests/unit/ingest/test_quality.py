@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from signaldesk.core.errors import IngestError
 from signaldesk.ingest.faers.dedup import DedupStats
 from signaldesk.ingest.faers.pipeline import QuarterResult
 from signaldesk.ingest.faers.quality import build_report, render, write_report
@@ -66,6 +67,9 @@ def test_dedup_section_carries_the_exclusion_and_its_interpretation() -> None:
     stats = DedupStats(
         records_considered=600,
         records_excluded_null_key=400,
+        records_flagged=59,
+        records_flagged_version=9,
+        records_flagged_probabilistic=50,
         blocks=12,
         largest_block=90,
         comparisons=1_000,
@@ -73,7 +77,7 @@ def test_dedup_section_carries_the_exclusion_and_its_interpretation() -> None:
         duplicate_pairs=50,
         cross_quarter_pairs=35,
     )
-    report = build_report([_result("2013Q1")], stats, version_pairs=9)
+    report = build_report([_result("2013Q1")], stats, version_pairs=9, postgres_cases=1000)
     dedup = report["deduplication"]
 
     assert dedup["stage2_records_excluded_null_blocking_key"] == 400
@@ -92,10 +96,16 @@ def test_duplicate_rate_is_per_record_not_per_pair() -> None:
     pairs against 11.5 million records considered. Dividing those gives 235
     percent, which is how a meaningless number reaches a published artifact.
     """
-    stats = DedupStats(records_considered=1000, duplicate_pairs=2500)
+    stats = DedupStats(
+        records_considered=1000,
+        duplicate_pairs=2500,
+        records_flagged=200,
+        records_flagged_version=0,
+        records_flagged_probabilistic=200,
+    )
     stats.pairs = [(i, i + 1, 1.0, 1.0, False) for i in range(200)]
 
-    report = build_report([_result("2013Q1")], stats)
+    report = build_report([_result("2013Q1")], stats, postgres_cases=1000)
     dedup = report["deduplication"]
 
     assert dedup["stage2_duplicate_records"] == 200
@@ -129,25 +139,26 @@ def test_each_rate_is_computed_against_its_own_population() -> None:
         "prod_ai": {"rows_total": 10, "rows_with_value": 9},
     }
 
-    rates = build_report([_result("2013Q1")], stats, corpus=corpus)["rates"]
+    rates = build_report([_result("2013Q1")], stats, corpus=corpus, postgres_cases=1000)["rates"]
 
     # Version supersession is checked on every case.
     assert rates["stage1_superseded_of_all_cases"]["denominator"] == 1000
     assert rates["stage1_superseded_of_all_cases"]["rate"] == pytest.approx(90 / 1000)
 
     # Probabilistic matching only sees cases that could be blocked.
-    assert rates["stage2_matched_of_blockable_cases"]["denominator"] == 600
-    assert rates["stage2_matched_of_blockable_cases"]["rate"] == pytest.approx(60 / 600)
+    assert rates["stage2_matched_of_eligible_cases"]["denominator"] == 600
+    assert rates["stage2_matched_of_eligible_cases"]["rate"] == pytest.approx(60 / 600)
 
     # The overall rate is against the corpus, not the blockable subset.
     assert rates["overall_duplicate_of_all_cases"]["denominator"] == 1000
     assert rates["overall_duplicate_of_all_cases"]["rate"] == pytest.approx(150 / 1000)
 
-    assert rates["unique_cases"] == 1000 - 150
+    assert rates["unique_cases"]["count"] == 1000 - 150
+    assert rates["unique_cases"]["store"] == "postgres"
     # Every rate is a share of its own population, so none can exceed one.
     for key in (
         "stage1_superseded_of_all_cases",
-        "stage2_matched_of_blockable_cases",
+        "stage2_matched_of_eligible_cases",
         "overall_duplicate_of_all_cases",
     ):
         assert 0.0 <= rates[key]["rate"] <= 1.0
@@ -175,6 +186,9 @@ def test_rendered_report_states_the_headline_numbers() -> None:
     stats = DedupStats(
         records_considered=600,
         records_excluded_null_key=400,
+        records_flagged=59,
+        records_flagged_version=9,
+        records_flagged_probabilistic=50,
         duplicate_pairs=50,
         cross_quarter_pairs=35,
         blocks=12,
@@ -182,7 +196,7 @@ def test_rendered_report_states_the_headline_numbers() -> None:
         comparisons=1000,
         naive_comparisons=180_000,
     )
-    text = render(build_report([_result("2013Q1")], stats))
+    text = render(build_report([_result("2013Q1")], stats, postgres_cases=1000))
     assert "quarters ingested: 1" in text
     assert "stage 2 duplicate pairs" in text
     assert "excluded, null blocking key" in text
@@ -206,3 +220,20 @@ def test_empty_run_does_not_divide_by_zero() -> None:
     assert report["prod_ai_coverage"]["share"] == 0.0
     # No pass, so no rates section rather than a section full of zeroes.
     assert "rates" not in report
+
+
+def test_a_pass_that_recorded_no_flag_counts_refuses_to_produce_rates() -> None:
+    """The first P03 artifact printed a stage 2 numerator of zero.
+
+    `duplicate_records` used to fall back to the length of the pair list, which
+    holds probabilistic matches only. A report built from a measured pass then
+    divided by a total that counted neither rule: the numerator came out as
+    max(probabilistic - version, 0), which was zero, and the surviving-case count
+    was 2.85 million too high. Raising is the only honest option, because there
+    is no number here that means what the caller is asking for.
+    """
+    stats = DedupStats(records_considered=600, duplicate_pairs=50)
+    stats.pairs = [(i, i + 1, 1.0, 1.0, False) for i in range(200)]
+
+    with pytest.raises(IngestError, match="flag counts were never recorded"):
+        build_report([_result("2013Q1")], stats, postgres_cases=1000)

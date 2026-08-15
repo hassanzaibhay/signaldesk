@@ -23,6 +23,7 @@ from signaldesk.core.logging import configure_logging, get_logger
 if TYPE_CHECKING:
     # Type-only: importing these for real pulls in the ORM, and the app registry
     # is not loaded until a command that needs it calls _setup_django.
+    from signaldesk.ingest.faers.dedup import ChainReport
     from signaldesk.ingest.faers.pipeline import QuarterResult
     from signaldesk.ingest.faers.quarter import Quarter
 
@@ -133,6 +134,25 @@ def _results_from_manifest(
     return results
 
 
+def _postgres_cases() -> int:
+    """Cases as the system of record counts them, one row per case.
+
+    The duplicate figures are counted in Postgres, so their denominator is too.
+    The analytical store holds one row per publication and is 707 rows larger;
+    dividing one by the other is the store mixing ADR 0004 warns about.
+    """
+    from signaldesk.web.signals.models import Case
+
+    return int(Case.objects.count())
+
+
+def _chain_report() -> ChainReport:
+    """Resolve canonical pointers before any rate is written."""
+    from signaldesk.ingest.faers.dedup import chain_report
+
+    return chain_report()
+
+
 @ingest_app.command("faers")
 def ingest_faers(
     from_quarter: Annotated[
@@ -194,7 +214,13 @@ def ingest_faers(
         stats = stage2()
         persist(stats, version_pairs)
 
-    report = quality.build_report(results, stats, version_pairs=len(version_pairs))
+    report = quality.build_report(
+        results,
+        stats,
+        version_pairs=len(version_pairs),
+        postgres_cases=_postgres_cases() if stats is not None else None,
+        chains=_chain_report() if stats is not None else None,
+    )
     path = quality.write_report(report)
     typer.echo(quality.render(report))
     typer.echo(f"\nreport written to {path}")
@@ -228,18 +254,24 @@ def ingest_faers_dedup(
     # Write the report here rather than only from the ingest command: this pass
     # is where the deduplication numbers are measured, and an artifact assembled
     # anywhere else would be a transcription of them rather than a record.
+    chains = _chain_report()
     report = quality.build_report(
         _results_from_manifest(start, end),
         stats,
         version_pairs=len(version_pairs),
         corpus=analytics.corpus_metrics(),
+        postgres_cases=_postgres_cases(),
+        chains=chains,
     )
     path = quality.write_report(report)
 
-    typer.echo(f"records considered:        {stats.records_considered:,}")
+    typer.echo(f"population:                {stats.population:,}")
+    typer.echo(f"of those, compared:        {stats.records_considered:,}")
     typer.echo(
         f"excluded, null block key:  {stats.records_excluded_null_key:,} ({stats.excluded_share:.2%})"
     )
+    typer.echo(f"excluded, superseded:      {stats.records_excluded_superseded:,}")
+    typer.echo(f"excluded, no drugs:        {stats.records_excluded_empty_drug_set:,}")
     typer.echo(f"blocks:                    {stats.blocks:,} (largest {stats.largest_block:,})")
     typer.echo(
         f"comparisons:               {stats.comparisons:,} (naive would be {stats.naive_comparisons:,})"
@@ -248,6 +280,10 @@ def ingest_faers_dedup(
     typer.echo(f"cross-quarter share:       {stats.cross_quarter_share:.2%}")
     typer.echo(f"superseded across quarters:{len(version_pairs):,}")
     typer.echo(f"rows written:              {rows:,}")
+    typer.echo(
+        f"chains: {chains.closed_components:,} closed components, {chains.cycles:,} cycles"
+        f" ({'sound' if chains.is_sound else 'NOT SOUND'})"
+    )
     typer.echo(f"report written to {path}")
 
 
@@ -319,6 +355,8 @@ def ingest_faers_quality(
         stats,
         version_pairs=len(resolve_versions_across_quarters()),
         corpus=analytics.corpus_metrics(),
+        postgres_cases=_postgres_cases(),
+        chains=_chain_report(),
     )
     path = quality.write_report(report)
     typer.echo(quality.render(report))
