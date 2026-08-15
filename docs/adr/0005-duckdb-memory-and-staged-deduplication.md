@@ -193,6 +193,37 @@ them. What each one was and how it was closed:
    exists to bound. The pointer stays a statement about a pair, because a pair is
    what was measured.
 
+   **The unique-case count does merge `a` into `c`, and that is a separate
+   decision.** It has to be said here, because the paragraph above reads as a
+   claim that nothing in the pipeline resolves transitively, and one thing does.
+   `rates.unique_cases.count` is 20,534,506 - 4,479,514 = 16,054,992: the corpus
+   minus every record holding an outgoing edge. Under a chain `a -> b -> c` with
+   `c` unflagged, both `a` and `b` are subtracted, so three records collapse to
+   one survivor even though `a` and `c` never matched. Single hop is what is
+   stored per record; transitive closure is what is counted.
+
+   The two are consistent, and the reason is the acceptance condition itself.
+   Once every chain is required to terminate at an unflagged record - zero closed
+   components, zero cycles - the components of the flag graph partition the
+   flagged population, and a subtraction is the only count those components
+   admit: each component contributes exactly one survivor. Any count that
+   credited `a` with its own survivor would have to name a record for it, and
+   there is none, because `a` is flagged. So the count is not derived from the
+   pointer semantics and does not follow from them; it is a second choice, made
+   deliberately, that the graph be read as components where the pointer is read
+   as pairs.
+
+   **The consequence for D2, stated because it changes what the audit has to
+   record.** A false-positive rate estimated over sampled pairs does not transfer
+   to the unique count. One spurious edge inside a chain of length `k`
+   over-merges `k - 1` records, so an error rate per pair maps onto an error in
+   the count that scales with the chain the pair sits in. The D2 frame therefore
+   has to carry the chain length of each sampled pair, or its interval is an
+   interval on the pair rate quoted as though it bounded the count, which
+   understates the count's error by whatever the mean chain length turns out to
+   be. Sampling pairs uniformly and reporting a single rate is not sufficient
+   here.
+
 Closed as follows. Item 1: `stage_population` classifies every case and stages
 only stage 1 survivors. Item 2: that same function builds the population for the
 pass and for the report, so there is no second query to disagree with the first.

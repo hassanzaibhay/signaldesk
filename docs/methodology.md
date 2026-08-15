@@ -253,10 +253,15 @@ transitive, so the set of records a case matched is not the block it sits in, an
 a canonical may itself be flagged against a third record the first never matched.
 Read a canonical as "the strongest duplicate of this record", not as "the record
 that represents this group": there is no group, because pairwise similarity does
-not define one. Reporting relies only on the pairwise reading. Chain resolution
-follows the pointers transitively to check that they terminate, which is a
-soundness property of the graph and not a claim that the endpoint duplicates
-every record on the path.
+not define one. Chain resolution follows the pointers transitively to check that
+they terminate, which is a soundness property of the graph and not a claim that
+the endpoint duplicates every record on the path.
+
+One figure does read the graph transitively rather than pairwise, and it is the
+headline one: the unique-case count subtracts every flagged record, which
+collapses a whole chain to one survivor. That is a separate deliberate decision,
+set out where the count is derived below and in ADR 0005 item 7. It is the reason
+this section says "reporting" nowhere without qualifying which reading it means.
 
 | Rate | Measured | Population | Status |
 |---|---|---|---|
@@ -287,10 +292,31 @@ Postgres, in `evals/history/ingest_faers_20260814T142156Z.json`. Every rate in
 that file names its store, and the Parquet total appears beside it for
 reconciliation rather than inside a subtraction.
 
+**That count is a transitive-closure count, and the canonical pointer is not.**
+20,534,506 - 4,479,514 = 16,054,992 subtracts every record holding an outgoing
+edge. Under a chain `a -> b -> c` where `c` is unflagged, `a` and `b` are both
+subtracted and three records collapse to one survivor, though `a` and `c` never
+matched: their drug sets fell below the threshold. So the two readings of the
+graph are deliberately different. A stored canonical is a statement about a pair,
+one hop, the strongest partner that record itself matched. The unique count reads
+the same graph as components, and once every chain is required to end at an
+unflagged record it is the only count the components admit - each contributes
+exactly one survivor, and a flagged record has no other survivor to be credited
+with. ADR 0005 item 7 carries the argument.
+
+**What that does to the D2 frame.** A false-positive rate measured on sampled
+pairs does not transfer to this count. A single spurious edge inside a chain of
+length `k` over-merges `k - 1` records, so the error in the count scales with the
+chain each bad pair sits in, not with the pair count. The audit therefore records
+the chain length of every sampled pair alongside its verdict. Reporting a pair
+rate as though it bounded the unique count would understate that error by roughly
+the mean chain length, and the mean chain length has not been measured.
+
 The count is still provisional, because stage 2 is. Stage 1 at 13.89 percent is
 the only settled rate here, and there is no duplicate rate for this corpus that
 can be quoted on its own yet. One becomes reportable when the audit bounds the
-stage 2 false-positive rate.
+stage 2 false-positive rate - and, per the paragraph above, bounds it in a form
+that carries chain length.
 
 **38 case identifiers survived nowhere under P02, which was a defect and not a
 property of the method.** Subtracting the flagged records treats every one of them
