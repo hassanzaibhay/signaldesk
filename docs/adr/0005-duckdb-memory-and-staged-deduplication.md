@@ -169,13 +169,29 @@ them. What each one was and how it was closed:
    in its block overwrites its stored canonical on every match, so it keeps
    whichever comparison ran last. The pair set is unaffected - the same records
    are flagged either way - but the pointer each flagged record carries is
-   decided by scoring order, which is not data. Its canonical can therefore be a
-   record that is itself flagged rather than the block's survivor, manufacturing
-   chains through the middle of a block. This is item 5's defect one level up,
-   and it is independent of item 5: fixing the pairwise tie-break makes each
+   decided by scoring order, which is not data. This is item 5's defect one level
+   up, and it is independent of item 5: fixing the pairwise tie-break makes each
    comparison decidable without making the choice between several decided
-   comparisons any less arbitrary. It becomes the strongest survivor seen for
-   that record, compared on the same `(fda_dt, primaryid)` total order.
+   comparisons any less arbitrary. It becomes the strongest of the partners the
+   record itself matched, on the same `(fda_dt, primaryid)` total order.
+
+   State what that does and does not give, because the first draft of this entry
+   overstated it. Selection is a **single hop over the matched neighbourhood**,
+   not over the block. Jaccard is not transitive, so if `a` matches `b` and `b`
+   matches `c` while `a` and `c` fall below the threshold, `a`'s canonical is `b`
+   and `b`'s is `c`. **A canonical may therefore itself be flagged, and chains
+   through a block still exist.** What the fix removes is the arbitrariness: the
+   pointer is now a function of the data rather than of scoring order, and two
+   passes over the same corpus write the same one.
+
+   Chains are intended here rather than a further defect. A block is not an
+   equivalence class - it is a set of records sharing a blocking key, related
+   pairwise by a similarity that does not compose - so there is no single
+   "block survivor" to point at. Resolving transitively to one would merge `a`
+   into `c` on the strength of a match neither record made, which is exactly the
+   over-merge direction the sparse stratum already leans in and the D2 audit
+   exists to bound. The pointer stays a statement about a pair, because a pair is
+   what was measured.
 
 Closed as follows. Item 1: `stage_population` classifies every case and stages
 only stage 1 survivors. Item 2: that same function builds the population for the
@@ -188,17 +204,36 @@ Item 5: `choose_survivor`, ordering on `(fda_dt, primaryid)`, tested with the
 arguments both ways round. Item 6: staging collapses to one row per case, so the
 population stops counting the 707 republications, and every rate divides Postgres
 by Postgres and names the store. Item 7: `_compare_block` carries a per-record
-best-survivor key and keeps a match only when it beats the one already recorded,
-held by two integration tests over a fixture of four mutually-matching records
-sharing one `fda_dt` - two passes write identical pairs, canonicals included, and
-the highest identifier in the block is the canonical of all three others rather
-than the endpoint of a chain.
+best-survivor key and keeps a match only when it beats the one already recorded.
+
+Three integration tests hold item 7, and they hold different things. Two use a
+fixture of four mutually-matching records sharing one `fda_dt`: two passes write
+identical pairs with identical canonicals, and the highest identifier is the
+canonical of all three others. Note what those two cannot see. Every record in
+that fixture matches every other, so the matched neighbourhood **is** the block,
+and single-hop selection and transitive resolution to a block survivor produce
+the same answer. They establish determinism; they do not discriminate between the
+two semantics. The third does: three records where `a` matches `b` and `b`
+matches `c` but `a` does not match `c`, asserting `a`'s canonical is `b` rather
+than `c`, under every order the comparison could reach them in. It is a
+characterization test - it locks in the behaviour described above as
+implemented, and it is the test that has to be revised, deliberately, if
+transitive resolution is ever adopted.
+
+The two fixtures separate different things, and neither covers the other. In the
+path fixture each record has exactly one strictly-greater partner, so there is no
+contest for the best-key guard to settle and it passes against the pre-fix
+selection as well - confirmed by running the P02 comparison over it, not assumed.
+The clique fixture is what fails without the guard. Determinism and single-hop
+are independent properties and are tested independently.
 
 Item 7 is worth noting as a method result and not only as a defect. Item 5 was
 argued from reading the code and reading the code missed the one above it; item 7
 was found by running the pass twice over records built to tie and comparing the
-output. The acceptance condition below is written the same way for that reason -
-verified by resolving the pointers, not by arguing that the fixes cover it.
+output. The overstatement corrected above was found the third way, by an audit
+that asked what the tests would still pass if the claim were false. The
+acceptance condition below is written for the same reason - verified by resolving
+the pointers, not by arguing that the fixes cover it.
 
 ### What the population is, and why three classes leave it
 
@@ -289,10 +324,10 @@ pointer graph, close a loop:
 
 Item 7 is the second, and it acts on the same graph independently. A record
 matching several others kept the canonical from whichever comparison ran last,
-so its pointer could name a record that is itself flagged rather than the
-block's survivor. That builds chains through the middle of a block regardless of
-which way any individual comparison was decided, so it can close a loop without
-item 5 being involved at all.
+so which of its partners the pointer named was decided by scoring order. Two
+records could therefore be pointed at each other by two comparisons that never
+agreed on a direction, regardless of how any individual comparison was decided,
+so it can close a loop without item 5 being involved at all.
 
 Both fed the pointer graph these components were found in, and the components
 were counted before either was understood.
@@ -311,6 +346,46 @@ stage 2 stays reachable while either arbitrary choice stands, which is why items
 5 and 7 are fixes in their own right rather than consequences of item 1. The
 re-run therefore verifies zero cycles and zero fully-flagged components as an
 acceptance condition, rather than assuming the population change resolved it.
+
+#### Why the corrected graph is acyclic, stated as the argument that holds
+
+Not "because the ordering is now a total order". That would be the argument if
+one ordering governed the whole graph, and it does not: stage 1 orders on
+`(caseversion, primaryid)`, stage 2 on `(fda_dt, primaryid)`, and `chain_report`
+reads both kinds of edge into a single graph with no filter on `method`. Two
+total orders in one graph are no better than the two partial ones that closed the
+P02 loops, so the argument has to come from the population instead.
+
+Three steps, each with the code that enforces it:
+
+1. **At most one outgoing edge per node.** Stage-1-superseded records are
+   excluded from `dedup_input` by the `status = 'eligible'` join in
+   `stage_population`, so they never enter a block and never acquire a stage 2
+   edge; and any that somehow did have their stage 2 row dropped at write time by
+   the supersession skip in `_duplicate_rows`, which is what the counter in item
+   3 measures. So a node carries a stage 1 edge or a stage 2 edge, never both.
+2. **Superseded records have in-degree zero.** They are not stage 1 targets - the
+   target is by construction the highest version - and they cannot be a stage 2
+   canonical, because a canonical is drawn from `dedup_input`, which excludes
+   them. A node with no incoming edge cannot lie on a cycle.
+3. **What is left is stage 2 only.** Any surviving cycle would have to run
+   entirely through eligible nodes joined by stage 2 edges, and every stage 2
+   edge points from lower to strictly higher `(fda_dt, primaryid)` - strictly,
+   because `primaryid` is unique per staged case and same-case pairs are skipped.
+   A cycle would need that strict increase to return to its start.
+
+Two things this argument depends on that are worth naming rather than assuming.
+The one-outgoing-edge invariant of step 1 is enforced at read time by
+`resolve_chains`, which **raises** when a record carries two different
+canonicals. It is not enforced by the schema: the constraint is
+`UniqueConstraint(["primaryid", "method"])`, which permits exactly one row per
+rule and therefore permits the two-edge case the argument rules out. And step 3
+is about the corrected pass only - it says nothing about P02, where the stage 2
+edge direction was not monotone in anything.
+
+This is why the acceptance condition is a measurement and not a proof discharged
+on paper: the argument holds given the population filter, and the pointer
+resolution is what checks that the population filter did what it says.
 
 ### Candidate rules, to be chosen after the audit and not before
 

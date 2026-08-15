@@ -246,6 +246,18 @@ P03's pass is checked for the same property directly rather than assumed to have
 it: two passes over a fixture built with `fda_dt` ties write identical flag sets,
 canonicals included.
 
+**What a canonical means, stated precisely, because it is narrower than it
+sounds.** The canonical of a flagged record is the strongest partner that record
+itself matched, ordered on `(fda_dt, primaryid)`. It is one hop. Jaccard is not
+transitive, so the set of records a case matched is not the block it sits in, and
+a canonical may itself be flagged against a third record the first never matched.
+Read a canonical as "the strongest duplicate of this record", not as "the record
+that represents this group": there is no group, because pairwise similarity does
+not define one. Reporting relies only on the pairwise reading. Chain resolution
+follows the pointers transitively to check that they terminate, which is a
+soundness property of the graph and not a claim that the endpoint duplicates
+every record on the path.
+
 | Rate | Measured | Population | Status |
 |---|---|---|---|
 | Stage 1 supersession | 2,851,499 / 20,535,213 = **13.89%** | every case | Settled |
