@@ -287,9 +287,12 @@ canonical pointers showed 17 components in which every member was flagged and no
 pointer reached an unflagged record: 57 records, 38 distinct case identifiers,
 removed outright rather than merged into a survivor. That was 57 records in
 16,029,162, about 3.6 in a million, and the size was not the point - the events
-were absent from the corpus, and no rate computed there said so. The cause was a
-survivor tie-break that is not a total order. **P03 closed it, and the corrected
-pass resolves all 4,479,514 pointers with zero closed components and zero cycles.**
+were absent from the corpus, and no rate computed there said so. Two arbitrary
+choices fed that graph - a survivor tie-break that is not a total order, and a
+canonical kept from whichever comparison ran last - and which component came from
+which is not recoverable; ADR 0005 records both and why. **P03 closed both, and
+the corrected pass resolves all 4,479,514 pointers with zero closed components
+and zero cycles.**
 
 **Why the stage 2 rate is a lower bound.** Under P02 two mechanisms held it down,
 neither a property of the data:

@@ -268,9 +268,11 @@ def survivor_key(record: BlockRecord) -> tuple[str, int]:
     not decoration: ``fda_dt`` ties are common, and an order that is only a
     partial order lets argument position decide the survivor. Position is
     scoring order, which is not data, and a direction chosen that way can
-    disagree with the direction stage 1 chose for the same records - which is
-    how the flag graph closed 17 loops in P02, removing 38 cases with no
-    survivor between them.
+    disagree with the direction stage 1 chose for the same records. That is one
+    of the two arbitrary choices behind the 17 closed components in P02, which
+    removed 38 cases with no survivor between them; the other is the canonical
+    kept in ``_compare_block``. Which component came from which is not
+    recoverable - see ADR 0005.
 
     ``primaryid`` is unique per record, so this is a total order.
     """
