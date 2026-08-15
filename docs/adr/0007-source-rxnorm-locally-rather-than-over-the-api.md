@@ -24,6 +24,50 @@ So at minimum 538,917 distinct strings need a lookup, and up to 656,589 if every
 where the top-ranked candidate resolves to no ingredient at all, which the probe
 found happens.
 
+### These five counts are over four different populations
+
+They are close enough in size to be mistaken for each other and they are not
+interchangeable. Any coverage claim has to name which one it divides by:
+
+| Count | Population it is computed over | How it composes |
+|---|---|---|
+| 641,070 | Distinct folded `drugname` values, whole corpus | measured |
+| 15,519 | Distinct folded `prod_ai` values, whole corpus | measured |
+| 656,589 | Distinct `(source_field, folded_string)` pairs | 641,070 + 15,519 |
+| 523,398 | Distinct `drugname` on the 6,662,275 rows carrying no `prod_ai` | measured |
+| 471,074 | Distinct `drugname` never appearing on any row beside a `prod_ai` | measured |
+| 538,917 | The minimum lookup set | 523,398 + 15,519 |
+
+Three things follow that are easy to get wrong:
+
+- **656,589 is not a count of distinct strings.** It is a count of string-and-field
+  pairs, which is what `drug_string_match` is keyed on, and it double-counts any
+  string appearing in both fields. It is the upper bound on work, not a corpus
+  vocabulary size.
+- **471,074 is a subset of 523,398**, and the 52,324 between them are strings that
+  appear beside a `prod_ai` somewhere in the corpus and not elsewhere. The first is
+  the population no cross-field signal can reach at all; the second is the
+  population that needs a `drugname` lookup on at least some rows. ADR 0008's
+  agreement signal is silent on the first, partially available on the second.
+- **538,917 is the minimum only under the rule "resolve `prod_ai` where it exists,
+  `drugname` where it does not".** Change that rule and the minimum changes.
+
+### Where these numbers live
+
+Only one of them is in a committed artifact. `evals/history/ingest_faers_20260814T142156Z.json`
+carries `prod_ai_coverage.rows_total` = 84,589,952 and
+`prod_ai_coverage.rows_with_value` = 77,927,677, whose difference is the 6,662,275
+rows with no `prod_ai`. **The five distinct-string counts are in this table and
+nowhere else** - not in any artifact, not reproducible without re-running the
+group-by over the drug Parquet. They are quoted in `match.py`, `normalize.py` and
+`drug_string_match`'s docstring, all of which cite this ADR rather than a
+measurement.
+
+That is a gap and it is load-bearing, because P03b's annotation budget divides by
+one of these. The frequency-coverage curve P03b measures carries all five counts
+in the same artifact, computed by the same query that produces the curve, so a
+coverage claim and its denominator come from one file.
+
 NLM's terms of service, quoted from the page:
 
 > In order to avoid overloading the RxNav servers, NLM requires that users of the

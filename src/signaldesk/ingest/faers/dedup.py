@@ -274,7 +274,11 @@ def survivor_key(record: BlockRecord) -> tuple[str, int]:
     kept in ``_compare_block``. Which component came from which is not
     recoverable - see ADR 0005.
 
-    ``primaryid`` is unique per record, so this is a total order.
+    ``primaryid`` is unique per record, so this is a total order. Note what that
+    does not buy: stage 1 orders on ``(caseversion, primaryid)`` and both edge
+    kinds land in one graph, so acyclicity comes from the population filter
+    excluding stage-1-superseded records, not from this ordering. ADR 0005 has
+    the argument.
     """
     return (record.fda_dt, record.primaryid)
 
@@ -388,8 +392,16 @@ def _compare_block(
     record matching several others keeps the strongest of them rather than
     whichever comparison ran last. Without it the canonical was decided by
     scoring order: the same arbitrary-choice defect as the tie-break, one level
-    up, and it produced chains through the middle of a block instead of pointing
-    every member at the record that actually survives it.
+    up.
+
+    The selection is a single hop over the partners this record actually
+    matched, not over the block. Jaccard is not transitive, so a canonical may
+    itself be flagged against a record the first one never matched, and chains
+    through a block are a normal outcome rather than a defect: a block is not an
+    equivalence class, and resolving transitively to one representative would
+    merge records on the strength of a match neither made. What this fixes is
+    the arbitrariness, not the shape - the pointer is now a function of the data,
+    and two passes over one corpus write the same one.
     """
     size = len(members)
     stats.largest_block = max(stats.largest_block, size)

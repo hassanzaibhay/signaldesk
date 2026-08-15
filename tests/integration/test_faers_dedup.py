@@ -8,6 +8,7 @@ either of them.
 
 from __future__ import annotations
 
+from itertools import permutations
 from pathlib import Path
 
 import polars as pl
@@ -18,6 +19,9 @@ from signaldesk.core.config import Settings
 from signaldesk.ingest.faers import manifest
 from signaldesk.ingest.faers.dedup import (
     METHOD_PROBABILISTIC,
+    BlockRecord,
+    DedupStats,
+    _compare_block,
     chain_report,
     load_stats,
     persist,
@@ -454,9 +458,157 @@ def test_the_highest_identifier_survives_a_tie(tied: Settings) -> None:
 
     Every record but the last is flagged, and each canonical is the strongest
     survivor rather than whichever comparison happened to run last.
+
+    What this cannot see: every record in `tied` matches every other, so the
+    matched neighbourhood is the whole block and single-hop selection agrees with
+    transitive resolution to a block survivor. It establishes determinism, not
+    which of the two the pass implements. `chained` below separates them.
     """
     stats = stage2(tied)
     flagged = {primaryid: canonical for primaryid, canonical, *_ in stats.pairs}
 
     assert set(flagged) == {100011, 200011, 300011}
     assert set(flagged.values()) == {400011}
+
+
+#: Ten-element drug sets, overlapping so that a-b and b-c clear the 0.8 Jaccard
+#: threshold and a-c does not. Sizes are what make this possible: on five-element
+#: sets the only value at or above 0.8 is 1.0, so the near-miss has nowhere to sit.
+_A_DRUGS = tuple(f"DRUG{n:02d}" for n in range(1, 11))
+_B_DRUGS = (*_A_DRUGS[:9], "DRUG11")
+_C_DRUGS = (*_A_DRUGS[:8], "DRUG11", "DRUG12")
+
+#: The same three records as the `chained` fixture, as the pass sees them after
+#: staging. Built directly so the comparison can be driven in orders the block
+#: reader would never produce on its own.
+_CHAINED_BLOCK = tuple(
+    BlockRecord(
+        index=position,
+        primaryid=primaryid,
+        caseid=primaryid // 10,
+        quarter="2013Q1",
+        sex="M",
+        country="US",
+        age=33.0,
+        fda_dt="2013-02-11",
+        drugs=frozenset(drugs),
+        reactions=frozenset(("NAUSEA", "HEADACHE")),
+    )
+    for position, (primaryid, drugs) in enumerate(
+        ((100021, _A_DRUGS), (200021, _B_DRUGS), (300021, _C_DRUGS))
+    )
+)
+
+
+@pytest.fixture
+def chained(tmp_path: Path, settings: Settings) -> Settings:
+    """Three cases in one block where the matched relation is a path, not a clique.
+
+    Drug sets are built so that, with reactions identical throughout:
+
+        jaccard(a, b) = 9/11 = 0.818   matches
+        jaccard(b, c) = 9/11 = 0.818   matches
+        jaccard(a, c) = 8/12 = 0.667   does not
+
+    One `fda_dt` across all three, so `survivor_key` reduces to `primaryid` and
+    the order is a < b < c. That is the arrangement in which single-hop selection
+    and transitive resolution give different answers: one hop makes b the
+    canonical of a, resolving the chain would make it c.
+    """
+    scoped = settings.model_copy(update={"data_dir": tmp_path / "chained"})
+    shared: dict[str, object] = {"sex": "M", "country": "US", "age_years": 33.0}
+    drugs_by_id = {100021: _A_DRUGS, 200021: _B_DRUGS, 300021: _C_DRUGS}
+    _write_case(
+        scoped,
+        "2013Q1",
+        [
+            {
+                "primaryid": primaryid,
+                "caseid": primaryid // 10,
+                "caseversion": 1,
+                "fda_dt": "2013-02-11",
+            }
+            | shared
+            for primaryid in drugs_by_id
+        ],
+    )
+    write_parquet(
+        pl.DataFrame(
+            [
+                {
+                    "primaryid": primaryid,
+                    "drug_seq": seq,
+                    "role_cod": "PS",
+                    "drugname_raw": drug,
+                }
+                for primaryid, drugs in drugs_by_id.items()
+                for seq, drug in enumerate(drugs, start=1)
+            ]
+        ),
+        DRUG_TARGET,
+        Quarter.parse("2013Q1"),
+        scoped,
+    )
+    write_parquet(
+        pl.DataFrame(
+            [
+                {"primaryid": primaryid, "pt": pt}
+                for primaryid in drugs_by_id
+                for pt in ("NAUSEA", "HEADACHE")
+            ]
+        ),
+        REACTION_TARGET,
+        Quarter.parse("2013Q1"),
+        scoped,
+    )
+    return scoped
+
+
+def test_the_canonical_is_one_hop_and_may_itself_be_flagged(chained: Settings) -> None:
+    """Characterization test: it records the semantics, it does not endorse them.
+
+    Canonical selection is a single hop over the partners a record actually
+    matched. Here a matched only b, so a's canonical is b - which is itself
+    flagged, against c. Resolving the chain would give a a canonical of c, a
+    record a never matched at 0.667 drug similarity.
+
+    The pass does not do that, deliberately: a block is not an equivalence class
+    under a non-transitive similarity, and merging a into c would be a merge on
+    the strength of a match neither record made. This test locks in what is
+    implemented so that adopting transitive resolution has to be a decision that
+    edits it, rather than a change that slips through green.
+
+    What it does not cover, stated so its role is not overread: each record here
+    has exactly one strictly-greater partner, so there is no contest for the
+    best-key guard to decide and this passes against the pre-fix selection too.
+    `tied` is what fails without the guard. This one separates single-hop from
+    transitive; that one separates deterministic from last-write-wins.
+    """
+    flagged = {primaryid: canonical for primaryid, canonical, *_ in stage2(chained).pairs}
+
+    assert flagged == {100021: 200021, 200021: 300021}
+    # The canonical of a is flagged in its own right. Not an accident of this
+    # fixture - it is the property the assertion above exists to pin.
+    assert flagged[100021] in flagged
+    assert 300021 not in flagged
+
+
+def test_single_hop_selection_does_not_depend_on_the_order_pairs_are_scored() -> None:
+    """The same three records, in every order the comparison could reach them.
+
+    `tied` covers this for a clique by running the pass twice, which repeats one
+    order rather than varying it. A path is the shape where order could plausibly
+    matter - b is comparable with both of the others, so it is the record whose
+    stored canonical a last-write-wins rule would decide by position - so the
+    orderings are enumerated rather than sampled. Permuting the member list also
+    flips the direction each candidate pair is generated in, which is the
+    argument-position dependence defect 5 was.
+    """
+    results = []
+    for order in permutations(_CHAINED_BLOCK):
+        seen: dict[int, tuple[int, float, float, bool]] = {}
+        _compare_block(list(order), DedupStats(), seen, {})
+        results.append({primaryid: value[0] for primaryid, value in seen.items()})
+
+    assert all(result == results[0] for result in results), "scoring order changed the canonicals"
+    assert results[0] == {100021: 200021, 200021: 300021}
