@@ -425,6 +425,18 @@ def signals_build(
         str | None, typer.Option("--from", help="First quarter, for example 2012Q4.")
     ] = None,
     to_quarter: Annotated[str | None, typer.Option("--to", help="Last quarter.")] = None,
+    chunk_rows: Annotated[
+        int | None,
+        typer.Option(
+            "--chunk-rows",
+            help=(
+                "Score and write this many pairs at a time instead of all at once. "
+                "Lowers peak memory at a small cost in wall clock, and produces "
+                "identical output. The raw-string corpus peaks near 8.2 GiB, so a "
+                "drug key yielding more pairs needs this."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Recompute contingency tables and the four estimators over the corpus.
 
@@ -448,7 +460,7 @@ def signals_build(
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
-    record, path = build_signals(spec)
+    record, path = build_signals(spec, chunk_rows=chunk_rows)
 
     typer.echo(f"run:                 {record.run_id}")
     typer.echo(f"drug key:            {record.params['drug_key']}")
@@ -457,7 +469,7 @@ def signals_build(
     typer.echo(f"pairs written:       {record.pairs_observed:,}")
     typer.echo(f"pairs with a >= {min_a}:   {record.pairs_sufficient:,}")
     typer.echo("flagged, over pairs at or above the minimum cell count:")
-    for name in ("ror", "prr", "bcpnn", "three_of_four"):
+    for name in ("ror", "prr", "bcpnn", "ror_prr_bcpnn"):
         headline = record.flag_counts[name]
         raw = record.flag_counts[f"{name}_including_insufficient"]
         typer.echo(f"  {name:16} {headline:>12,}   (with insufficient pairs: {raw:,})")
@@ -506,6 +518,80 @@ def signals_artifact(
 
     path = write_history_artifact(runs, diagnostics=diagnostics)
     typer.echo(f"written to {path}")
+
+
+@signals_app.command("mgps-diagnostic")
+def signals_mgps_diagnostic(
+    run: Annotated[
+        str,
+        typer.Option("--run", help="Run identifier to profile. Read from its persisted parquet."),
+    ],
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Where to write the diagnostic JSON."),
+    ] = Path("/data/mgps_boundary_diagnostic.json"),
+    grid: Annotated[
+        str | None,
+        typer.Option(
+            "--grid",
+            help=(
+                "Comma-separated alpha1 values to profile, all above the lower "
+                "bound. Defaults to a grid dense near the bound."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Profile the MGPS likelihood in alpha1 and score EBGM05 across the profile.
+
+    Answers whether the gamma mixture's boundary fit is a genuine limit of the
+    data or a failed search, by comparing the likelihood at the bound against the
+    best value anywhere on the grid. Then scores EBGM05 at the bound and at the
+    grid argmin, because if the flagged count moves between them no MGPS number
+    can be quoted whatever the first answer was.
+
+    Reads a completed run rather than rebuilding the contingency table. Refits
+    four parameters at every grid point, twice, so it takes tens of minutes on
+    the full corpus. Writes one JSON file for `signals artifact
+    --mgps-diagnostic` to embed.
+    """
+    _setup_django()
+
+    from signaldesk.analytics.mgps_diagnostic import DEFAULT_GRID, write_diagnostic
+
+    try:
+        values = (
+            tuple(float(piece) for piece in grid.split(",") if piece.strip())
+            if grid
+            else DEFAULT_GRID
+        )
+    except ValueError as error:
+        raise typer.BadParameter(f"--grid must be comma-separated numbers: {error}") from error
+
+    document = write_diagnostic(run, out, grid=values)
+
+    typer.echo(f"run:                 {document['run_id']}")
+    typer.echo(f"pairs:               {document['pairs']:,}")
+    typer.echo(f"sufficient pairs:    {document['sufficient_pairs']:,}")
+    typer.echo(f"NLL at bound:        {document['nll_at_bound']:,.4f}")
+    typer.echo(
+        f"grid argmin:         alpha1={document['grid_argmin']['alpha1']:g} "
+        f"NLL={document['grid_argmin']['nll']:,.4f}"
+    )
+    typer.echo(f"bound minus argmin:  {document['bound_minus_argmin']:,.4f}")
+    typer.echo(f"bound is optimum:    {document['bound_is_optimum']}")
+    typer.echo(f"monotone from bound: {document['monotone_away_from_bound']}")
+    typer.echo(f"sweeps agree:        {document['sweeps_agree_everywhere']}")
+    if document["sweeps_disagree_at"]:
+        disagreed = ", ".join(f"{value:g}" for value in document["sweeps_disagree_at"])
+        typer.echo(f"  sweeps disagree at: {disagreed}")
+    typer.echo(f"EBGM05 flagged at bound:  {document['ebgm05_at_bound']['flagged_ebgm05_gt_2']:,}")
+    typer.echo(
+        f"EBGM05 flagged at argmin: {document['ebgm05_at_grid_argmin']['flagged_ebgm05_gt_2']:,}"
+    )
+    spread = document["relative_spread"]
+    if spread is not None:
+        typer.echo(f"flagged spread:      {spread * 100:.1f} percent across the profile")
+    typer.echo(f"written to:          {out}")
 
 
 @index_app.command("build")

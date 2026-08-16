@@ -38,8 +38,9 @@ from signaldesk.analytics.contingency import ContingencySpec, PairTable
 from signaldesk.analytics.contingency import build as build_contingency
 from signaldesk.core.config import Settings, get_settings
 from signaldesk.core.logging import get_logger
+from signaldesk.stats.mgps import fit_hyperparameters
 from signaldesk.stats.panel import estimate_all
-from signaldesk.stats.types import EstimatorPanel
+from signaldesk.stats.types import EstimatorPanel, FloatArray
 
 log = get_logger(__name__)
 
@@ -90,7 +91,7 @@ class SignalRun:
                     "The gamma mixture prior converged onto a bound, so EBGM and "
                     "EBGM05 are written but are not measurements and must not be "
                     "quoted. flag_all_four is null for the same reason; "
-                    "flag_three_of_four is what this run supports."
+                    "flag_ror_prr_bcpnn is what this run supports."
                 )
                 if self.mgps_provisional
                 else "Interior optimum; the prior is an estimate.",
@@ -175,13 +176,27 @@ def _peak_rss_bytes() -> int:
     return int(usage.ru_maxrss) * (1 if platform.system() == "Darwin" else 1024)
 
 
-def _rows(pairs: PairTable, panel: EstimatorPanel, run_id: str) -> pl.DataFrame:
+def _rows(
+    pairs: PairTable,
+    panel: EstimatorPanel,
+    run_id: str,
+    *,
+    start: int = 0,
+    stop: int | None = None,
+) -> pl.DataFrame:
+    """The scored rows for ``pairs[start:stop]``, which ``panel`` must cover.
+
+    ``start``/``stop`` select the label slice to pair with a panel scored over
+    the same rows. They default to the whole table.
+    """
+    stop = len(pairs) if stop is None else stop
     table = panel.contingency
+    width = stop - start
     return pl.DataFrame(
         {
-            "run_id": [run_id] * len(pairs),
-            "drug": pairs.drug,
-            "pt": pairs.pt,
+            "run_id": [run_id] * width,
+            "drug": pairs.drug[start:stop],
+            "pt": pairs.pt[start:stop],
             "a": table.a,
             "b": table.b,
             "c": table.c,
@@ -208,9 +223,9 @@ def _rows(pairs: PairTable, panel: EstimatorPanel, run_id: str) -> pl.DataFrame:
             "flag_prr": panel.flag_prr,
             "flag_bcpnn": panel.flag_bcpnn,
             "flag_mgps": panel.flag_mgps,
-            "flag_three_of_four": panel.flag_three_of_four,
+            "flag_ror_prr_bcpnn": panel.flag_ror_prr_bcpnn,
             "flag_all_four": (
-                panel.flag_all_four if panel.flag_all_four is not None else [None] * len(pairs)
+                panel.flag_all_four if panel.flag_all_four is not None else [None] * width
             ),
         }
     )
@@ -242,7 +257,7 @@ def _flag_counts(panel: EstimatorPanel) -> dict[str, int | None]:
         ("prr", panel.flag_prr),
         ("bcpnn", panel.flag_bcpnn),
         ("mgps", panel.flag_mgps),
-        ("three_of_four", panel.flag_three_of_four),
+        ("ror_prr_bcpnn", panel.flag_ror_prr_bcpnn),
     ):
         counts[name] = int(np.sum(flag & sufficient))
         counts[f"{name}_including_insufficient"] = int(np.sum(flag))
@@ -256,16 +271,25 @@ def _flag_counts(panel: EstimatorPanel) -> dict[str, int | None]:
     return counts
 
 
-def _ic_divergence(panel: EstimatorPanel) -> dict[str, float]:
+def _ic_gap(panel: EstimatorPanel) -> FloatArray:
+    """Absolute gap between the closed-form IC and the exact posterior mean."""
+    finite = np.isfinite(panel.bcpnn.ic_observed_expected)
+    return np.abs(panel.bcpnn.ic_observed_expected[finite] - panel.bcpnn.ic[finite])
+
+
+def _ic_divergence_from_gap(gap: FloatArray) -> dict[str, float]:
     """How far the locked closed-form IC sits from the exact posterior mean.
 
     Reported on every run because the two are not the same statistic and the gap
     grows as the expected count falls. See ``stats.bcpnn``.
+
+    Takes the gap rather than a panel so a chunked run can concatenate the gaps
+    and get the same median as an unchunked one. A median cannot be accumulated
+    from per-chunk medians, and averaging them would be a different number
+    wearing this one's name.
     """
-    finite = np.isfinite(panel.bcpnn.ic_observed_expected)
-    if not bool(np.any(finite)):
+    if not gap.size:
         return {"max_absolute": 0.0, "median_absolute": 0.0, "share_above_one": 0.0}
-    gap = np.abs(panel.bcpnn.ic_observed_expected[finite] - panel.bcpnn.ic[finite])
     return {
         "max_absolute": float(np.max(gap)),
         "median_absolute": float(np.median(gap)),
@@ -273,29 +297,88 @@ def _ic_divergence(panel: EstimatorPanel) -> dict[str, float]:
     }
 
 
+def _ic_divergence(panel: EstimatorPanel) -> dict[str, float]:
+    """``_ic_divergence_from_gap`` over a single panel."""
+    return _ic_divergence_from_gap(_ic_gap(panel))
+
+
+def _merge_counts(
+    total: dict[str, int | None], chunk: dict[str, int | None]
+) -> dict[str, int | None]:
+    """Add one chunk's flag counts into the running total.
+
+    ``None`` is contagious: ``all_four`` is ``None`` when the MGPS prior is
+    provisional, and a total that turned that into a number would be reporting a
+    count the run does not support.
+    """
+    if not total:
+        return dict(chunk)
+    merged: dict[str, int | None] = {}
+    for key, value in chunk.items():
+        running = total.get(key)
+        merged[key] = None if running is None or value is None else running + value
+    return merged
+
+
 def build(
     spec: ContingencySpec | None = None,
     settings: Settings | None = None,
+    *,
+    chunk_rows: int | None = None,
 ) -> tuple[SignalRun, Path]:
-    """Build, score and persist one signal run. Returns the record and its path."""
+    """Build, score and persist one signal run. Returns the record and its path.
+
+    ``chunk_rows`` scores and writes the table in row batches instead of all at
+    once, trading a little wall clock for a much lower peak. The raw-string
+    corpus peaks at 8.2 GiB of an 11.7 GiB container, so a key that yields more
+    pairs - ``--drug-key ingredient`` - needs this rather than 3.5 GiB of
+    headroom and hope. Output is identical either way: every statistic is per
+    row, and the one quantity fitted across rows, the MGPS prior, is fitted once
+    on the whole table below and passed into every chunk.
+    """
     spec = spec or ContingencySpec()
     settings = settings or get_settings()
     started = time.monotonic()
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
     pairs = build_contingency(spec, settings)
+    partition = signal_root(settings) / f"run={run_id}"
+    partition.mkdir(parents=True, exist_ok=True)
+
+    total = len(pairs)
+    step = max(1, chunk_rows if chunk_rows else total)
     # The gamma mixture reaches a bound on this corpus. The fit is accepted so
     # the columns exist and can be studied, and every consequence of that is
     # marked provisional: no EBGM number leaves this run as a measurement, and
     # flag_all_four is null rather than false.
-    panel = estimate_all(pairs.table, min_a=spec.min_a, mgps_allow_boundary=True)
+    prior = fit_hyperparameters(
+        pairs.table.a.astype(np.float64), pairs.table.expected, allow_boundary=True
+    )
 
-    frame = _rows(pairs, panel, run_id)
-    partition = signal_root(settings) / f"run={run_id}"
-    partition.mkdir(parents=True, exist_ok=True)
-    frame.write_parquet(partition / "part-0.parquet", compression="zstd")
+    flag_counts: dict[str, int | None] = {}
+    gaps: list[FloatArray] = []
+    panel: EstimatorPanel | None = None
+    for index, start in enumerate(range(0, total, step) if total else [0]):
+        stop = min(start + step, total)
+        panel = estimate_all(
+            pairs.table.rows(start, stop),
+            min_a=spec.min_a,
+            hyperparameters=prior,
+            mgps_allow_boundary=True,
+        )
+        _rows(pairs, panel, run_id, start=start, stop=stop).write_parquet(
+            partition / f"part-{index}.parquet", compression="zstd"
+        )
+        flag_counts = _merge_counts(flag_counts, _flag_counts(panel))
+        gaps.append(_ic_gap(panel))
+        if step < total:
+            log.info("signals.chunk.scored", run_id=run_id, rows=stop, of=total, chunk=index)
 
-    hyper = panel.mgps.hyperparameters
+    if panel is None:  # pragma: no cover - build_contingency never returns nothing
+        message = f"contingency for {spec.as_params()} produced no pairs"
+        raise ValueError(message)
+
+    hyper = prior
     record = SignalRun(
         run_id=run_id,
         created_at=datetime.now(UTC).isoformat(),
@@ -321,8 +404,10 @@ def build(
             "on_boundary": list(hyper.on_boundary),
         },
         mgps_provisional=hyper.provisional,
-        flag_counts=_flag_counts(panel),
-        ic_divergence=_ic_divergence(panel),
+        flag_counts=flag_counts,
+        ic_divergence=_ic_divergence_from_gap(
+            np.concatenate(gaps) if gaps else np.asarray([], dtype=np.float64)
+        ),
         seconds=time.monotonic() - started,
         peak_rss_bytes=_peak_rss_bytes(),
     )
@@ -351,7 +436,8 @@ def build(
         "signals.built",
         run_id=run_id,
         pairs=record.pairs_observed,
-        three_of_four=record.flag_counts["three_of_four"],
+        ror_prr_bcpnn=record.flag_counts["ror_prr_bcpnn"],
+        chunks=len(gaps),
         mgps_provisional=record.mgps_provisional,
         seconds=round(record.seconds, 1),
         peak_rss_gib=round(record.peak_rss_bytes / 1024**3, 2),
@@ -368,13 +454,33 @@ def latest_run(settings: Settings | None = None) -> str | None:
     return runs[-1] if runs else None
 
 
+#: ``flag_three_of_four`` was renamed to ``flag_ror_prr_bcpnn``: the old name
+#: reads as "any three of the four agreed", which is a different and larger set
+#: wherever MGPS flags a pair the other three do not. Runs written before the
+#: rename are read through these aliases rather than rebuilt, since the data and
+#: the arithmetic behind them are unchanged. The first build after the rename
+#: writes the new name natively and these can go.
+LEGACY_FLAG_COLUMN = "flag_three_of_four"
+LEGACY_FLAG_COLUMNS = {LEGACY_FLAG_COLUMN: "flag_ror_prr_bcpnn"}
+LEGACY_FLAG_COUNT_KEYS = {
+    "three_of_four": "ror_prr_bcpnn",
+    "three_of_four_including_insufficient": "ror_prr_bcpnn_including_insufficient",
+}
+
+
 def read_run(run_id: str, settings: Settings | None = None) -> pl.DataFrame:
-    """Every scored pair from one run."""
+    """Every scored pair from one run, under current column names."""
     partition = signal_root(settings) / f"run={run_id}"
     if not partition.exists():
         message = f"no signal run {run_id!r} under {signal_root(settings)}"
         raise FileNotFoundError(message)
-    return pl.read_parquet(partition / "*.parquet")
+    frame = pl.read_parquet(partition / "*.parquet")
+    renames = {
+        old: new
+        for old, new in LEGACY_FLAG_COLUMNS.items()
+        if old in frame.columns and new not in frame.columns
+    }
+    return frame.rename(renames) if renames else frame
 
 
 #: Repository root, from this module's location: analytics -> signaldesk -> src.
@@ -387,19 +493,78 @@ def history_root() -> Path:
 
 
 def read_record(run_id: str, settings: Settings | None = None) -> dict[str, object]:
-    """The full provenance record for one run."""
+    """The full provenance record for one run, under current key names.
+
+    This is the path that reaches the committed artifact, whose ``runs`` block is
+    the record verbatim, so the legacy flag-count keys are mapped here too.
+    """
     path = run_root(settings) / f"run={run_id}" / "record.json"
     if not path.exists():
         message = f"no run record at {path}"
         raise FileNotFoundError(message)
     document: dict[str, object] = json.loads(path.read_text(encoding="utf-8"))
+    counts = document.get("flag_counts")
+    if isinstance(counts, dict):
+        document["flag_counts"] = {
+            LEGACY_FLAG_COUNT_KEYS.get(key, key): value for key, value in counts.items()
+        }
     return document
+
+
+def _uses_legacy_flag_name(run_ids: Sequence[str], settings: Settings | None = None) -> bool:
+    """Whether any included run's parquet still carries the pre-rename column."""
+    for run_id in run_ids:
+        partition = signal_root(settings) / f"run={run_id}"
+        parts = sorted(partition.glob("*.parquet")) if partition.exists() else []
+        if parts and LEGACY_FLAG_COLUMN in pl.read_parquet_schema(parts[0]):
+            return True
+    return False
 
 
 def _is_provisional(run: dict[str, object]) -> bool:
     """Whether a run's MGPS scores were produced by a boundary fit."""
     mgps = run.get("mgps")
     return isinstance(mgps, dict) and bool(mgps.get("provisional"))
+
+
+def _withheld_reason(diagnostic: dict[str, object] | None) -> str:
+    """Why MGPS is withheld, stating only what was actually measured.
+
+    The spread is read from the diagnostic rather than written here. A constant
+    in this file would be reported for every future run whatever that run
+    measured, and would sit in the same document as a diagnostic contradicting
+    it.
+    """
+    boundary = (
+        "The gamma mixture prior converged onto a bound on this corpus. "
+        "EBGM and EBGM05 columns exist in the signal table and are not "
+        "measurements."
+    )
+    if diagnostic is None:
+        return (
+            f"{boundary} Whether that bound is the genuine optimum, and how far "
+            "EBGM05 moves across the profile likelihood, has not been measured "
+            "for this run."
+        )
+
+    spread = diagnostic.get("relative_spread")
+    movement = (
+        f"EBGM05 moves by {float(spread) * 100:.1f} percent in flagged count "
+        "across that profile, so which value is believed changes the reported "
+        "number."
+        if isinstance(spread, int | float)
+        else "The EBGM05 sensitivity across that profile was not recorded."
+    )
+    if diagnostic.get("bound_is_optimum"):
+        return (
+            f"{boundary} The profile likelihood shows the bound is the genuine "
+            f"optimum rather than an optimizer failure, but {movement}"
+        )
+    return (
+        f"{boundary} The profile likelihood finds a lower value away from the "
+        f"bound, so the fit is defective rather than describing a limit of the "
+        f"data. {movement}"
+    )
 
 
 def write_history_artifact(
@@ -425,10 +590,29 @@ def write_history_artifact(
         json.loads(diagnostics.read_text(encoding="utf-8")) if diagnostics is not None else None
     )
 
+    shas = sorted({str(run.get("code_sha", "unknown")) for run in runs})
+    unrecorded = [run["run_id"] for run in runs if str(run.get("code_sha", "unknown")) == "unknown"]
+
     document = {
         "artifact": "signals",
         "written_at": datetime.now(UTC).isoformat(),
-        "code_sha": _code_sha(),
+        # The commit the artifact was assembled at, which is not the provenance
+        # of the numbers in it. Each run carries its own code_sha and that is
+        # what produced its counts.
+        "writer_code_sha": _code_sha(),
+        "runs_code_sha": {
+            "distinct": shas,
+            "runs_at_unrecorded_commit": unrecorded,
+            "note": (
+                "Every included run recorded the commit it was built at."
+                if not unrecorded
+                else (
+                    "These runs were produced at an unrecorded commit. "
+                    "writer_code_sha describes only the process that assembled "
+                    "this file and is not the provenance of their numbers."
+                )
+            ),
+        },
         "runs": runs,
         "reference_validation": {
             "status": "blocked",
@@ -453,18 +637,19 @@ def write_history_artifact(
             ),
             "estimators": ["ror", "prr", "bcpnn"],
             "withheld": ["mgps"] if provisional else [],
-            "withheld_reason": (
-                "The gamma mixture prior converged onto a bound on this corpus. The "
-                "profile likelihood shows the bound is the genuine optimum rather than "
-                "an optimizer failure, but EBGM05 moves by 17.9 percent in flagged "
-                "count across that profile, so which value is believed changes the "
-                "reported number. EBGM and EBGM05 columns exist in the signal table "
-                "and are not measurements."
-            )
-            if provisional
-            else None,
+            "withheld_reason": _withheld_reason(diagnostic) if provisional else None,
         },
     }
+
+    if _uses_legacy_flag_name(run_ids, settings):
+        document["schema_note"] = (
+            "flag_three_of_four was renamed to flag_ror_prr_bcpnn, which states "
+            "the definition: the conjunction of ROR, PRR and BCPNN, not 'any "
+            "three of the four agreed'. The run parquet for these runs still "
+            "carries the old column name; this artifact carries the new one. The "
+            "counts are unchanged - the rename is applied when the run is read, "
+            "and the runs were not rebuilt."
+        )
 
     directory = root or history_root()
     directory.mkdir(parents=True, exist_ok=True)
