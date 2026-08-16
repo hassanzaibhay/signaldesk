@@ -48,8 +48,13 @@ def estimate_all(
     rather than raising. ``panel.mgps_provisional`` is then true, and with it
     ``flag_all_four`` is **not** computed: a conservative four-method count built
     on a prior that is an artefact of the feasible region would be a headline
-    number resting on an unvalidated one. ``flag_three_of_four`` is what such a
+    number resting on an unvalidated one. ``flag_ror_prr_bcpnn`` is what such a
     run can report.
+
+    ``flag_ror_prr_bcpnn`` is the conjunction of those three estimators, not a
+    k-of-n rule over all four. Where MGPS flags a pair the other three do not,
+    "any three of the four agreed" is a strictly larger set, and the two must
+    not be read as the same number.
     """
     ror_result = ror.reporting_odds_ratio(table)
     prr_result = prr.proportional_reporting_ratio(table)
@@ -62,7 +67,7 @@ def estimate_all(
     flag_prr = prr.flag(prr_result)
     flag_bcpnn = bcpnn.flag(bcpnn_result)
     flag_mgps = mgps.flag(mgps_result)
-    flag_three = flag_ror & flag_prr & flag_bcpnn
+    flag_ror_prr_bcpnn = flag_ror & flag_prr & flag_bcpnn
 
     provisional = mgps_result.hyperparameters.provisional
 
@@ -76,8 +81,8 @@ def estimate_all(
         flag_prr=flag_prr,
         flag_bcpnn=flag_bcpnn,
         flag_mgps=flag_mgps,
-        flag_three_of_four=flag_three,
-        flag_all_four=None if provisional else flag_three & flag_mgps,
+        flag_ror_prr_bcpnn=flag_ror_prr_bcpnn,
+        flag_all_four=None if provisional else flag_ror_prr_bcpnn & flag_mgps,
         mgps_provisional=provisional,
         insufficient=np.asarray(table.a < min_a, dtype=np.bool_),
     )

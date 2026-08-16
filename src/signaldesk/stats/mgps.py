@@ -62,6 +62,7 @@ a given hyperparameter vector, the fitted vector itself, and the per-pair
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -402,11 +403,36 @@ def fit_hyperparameters(
 
 @dataclass(frozen=True, slots=True)
 class ProfilePoint:
-    """One point of a profile likelihood: the fixed value and the refit under it."""
+    """One point of a profile likelihood: the fixed value and the refit under it.
+
+    Both sweeps are kept. ``neg_log_likelihood`` and ``theta`` are the better of
+    the two, and ``forward_*``/``backward_*`` are what each sweep found on its
+    own. Reporting only the minimum would hide the one thing the pair is here to
+    measure: where the sweeps disagree, the likelihood has more than one basin at
+    that grid point, and a profile assembled from a single direction would have
+    reported whichever basin it happened to land in as the shape of the curve.
+    """
 
     value: float
     neg_log_likelihood: float
     theta: tuple[float, float, float, float, float]
+    forward_nll: float | None = None
+    forward_theta: tuple[float, float, float, float, float] | None = None
+    backward_nll: float | None = None
+    backward_theta: tuple[float, float, float, float, float] | None = None
+
+    @property
+    def sweeps_agree(self) -> bool:
+        """Whether both sweeps reached the same optimum, to float tolerance.
+
+        ``True`` when only one sweep reached this point: there is then nothing to
+        disagree with. Read it together with ``forward_nll`` and ``backward_nll``,
+        either of which being ``None`` says the point was reached once.
+        """
+        if self.forward_nll is None or self.backward_nll is None:
+            return True
+        scale = max(abs(self.forward_nll), abs(self.backward_nll), 1.0)
+        return abs(self.forward_nll - self.backward_nll) <= 1e-9 * scale
 
 
 def profile_likelihood(
@@ -416,25 +442,46 @@ def profile_likelihood(
     parameter: str = "alpha1",
     grid: tuple[float, ...],
     weights: FloatArray | None = None,
+    start_points: tuple[tuple[float, float, float, float, float], ...] = START_POINTS,
+    on_point: Callable[[str, float, float | None], None] | None = None,
     squash_above: int = SQUASH_THRESHOLD,
 ) -> tuple[ProfilePoint, ...]:
     """Profile the likelihood in one parameter, refitting the others at each point.
 
     This is how a boundary optimum is diagnosed, and refitting from more start
     points is not. Fix ``parameter`` at a grid value, maximise over the
-    remaining four, and read the shape of the resulting curve:
+    remaining four, and compare the likelihood at the bound against the best
+    value anywhere on the grid:
 
-    * **monotone decreasing toward the bound** - the boundary is the genuine
-      optimum for this data. A zero-truncated negative binomial tends to the
-      logarithmic distribution as its shape goes to zero, which is a legitimate
-      limit for a table dominated by pairs reported exactly once, not a defect.
-    * **an interior minimum** - the likelihood has a proper optimum that the
-      optimizer failed to reach, and the implementation is at fault.
+    * **the bound is no worse than the grid minimum** - the boundary is the
+      genuine optimum for this data. A zero-truncated negative binomial tends to
+      the logarithmic distribution as its shape goes to zero, which is a
+      legitimate limit for a table dominated by pairs reported exactly once, not
+      a defect.
+    * **some grid point beats the bound** - the likelihood has a proper optimum
+      the fit failed to reach, and the implementation is at fault.
+
+    That comparison is what settles it. Monotonicity of the curve is an
+    observation about shape and is reported alongside, but a curve can be
+    non-monotone far from the bound while the bound is still the optimum, so
+    monotonicity alone decides nothing.
+
+    The grid is swept forward and then backward, each point offering its solved
+    vector as an extra start to the next alongside ``start_points``. Continuation
+    is a search improvement only: it makes each point report the best optimum
+    found, and does not make any particular shape come out. Both sweeps are
+    retained on the returned points.
 
     Returns one ``ProfilePoint`` per grid value, in grid order, carrying the
     refitted parameter vector as well as the likelihood so the scores implied by
     each point can be compared. Points where every refit fails are omitted
     rather than filled with a placeholder.
+
+    ``on_point`` is called as ``(direction, value, nll)`` after each grid point,
+    with ``nll`` ``None`` where every refit failed. A full-corpus profile is
+    hundreds of refits over tens of minutes, and without this it is one silent
+    process. The callback is how the caller reports progress: this module does
+    no I/O of its own, so it cannot log that itself.
     """
     if parameter not in PARAMETER_NAMES:
         message = f"unknown parameter {parameter!r}; expected one of {PARAMETER_NAMES}"
@@ -445,43 +492,80 @@ def profile_likelihood(
         count, expected, weights = squash(count, expected)
 
     free = [position for position in range(5) if position != index]
+    bounds = [BOUNDS[position] for position in free]
+    fixed_starts = [[start[position] for position in free] for start in start_points]
+
+    def sweep(values: Sequence[float], direction: str) -> dict[float, tuple[float, list[float]]]:
+        """One pass over ``values``, warm-starting each point from the last."""
+        found: dict[float, tuple[float, list[float]]] = {}
+        carried: list[float] | None = None
+        for value in values:
+
+            def objective(vector: FloatArray, fixed: float = value) -> float:
+                theta = [0.0] * 5
+                theta[index] = fixed
+                for slot, position in enumerate(free):
+                    theta[position] = float(vector[slot])
+                candidate = (theta[0], theta[1], theta[2], theta[3], theta[4])
+                result = negative_log_likelihood(candidate, count, expected, weights=weights)
+                return result if np.isfinite(result) else 1e300
+
+            best: tuple[float, list[float]] | None = None
+            starts = fixed_starts if carried is None else [carried, *fixed_starts]
+            for start in starts:
+                outcome = minimize(
+                    objective,
+                    np.asarray(start, dtype=np.float64),
+                    method="L-BFGS-B",
+                    bounds=bounds,
+                )
+                if not outcome.success or not np.isfinite(outcome.fun):
+                    continue
+                if best is None or outcome.fun < best[0]:
+                    best = (float(outcome.fun), [float(x) for x in outcome.x])
+            if best is not None:
+                found[value] = best
+                carried = best[1]
+            if on_point is not None:
+                on_point(direction, float(value), best[0] if best else None)
+        return found
+
+    def widen(
+        fixed: float, free_values: Sequence[float]
+    ) -> tuple[float, float, float, float, float]:
+        """Put the free parameters back into full five-vector order."""
+        theta = [0.0] * 5
+        theta[index] = float(fixed)
+        for slot, position in enumerate(free):
+            theta[position] = float(free_values[slot])
+        return (theta[0], theta[1], theta[2], theta[3], theta[4])
+
+    forward = sweep(grid, "forward")
+    backward = sweep(tuple(reversed(grid)), "backward")
+
     profile: list[ProfilePoint] = []
-
     for value in grid:
-
-        def objective(vector: FloatArray, fixed: float = value) -> float:
-            theta = [0.0] * 5
-            theta[index] = fixed
-            for slot, position in enumerate(free):
-                theta[position] = float(vector[slot])
-            candidate = (theta[0], theta[1], theta[2], theta[3], theta[4])
-            result = negative_log_likelihood(candidate, count, expected, weights=weights)
-            return result if np.isfinite(result) else 1e300
-
-        best: ProfilePoint | None = None
-        for start in START_POINTS:
-            outcome = minimize(
-                objective,
-                np.asarray([start[position] for position in free], dtype=np.float64),
-                method="L-BFGS-B",
-                bounds=[BOUNDS[position] for position in free],
-            )
-            if not outcome.success or not np.isfinite(outcome.fun):
-                continue
-            if best is not None and outcome.fun >= best.neg_log_likelihood:
-                continue
-            theta = [0.0] * 5
-            theta[index] = float(value)
-            for slot, position in enumerate(free):
-                theta[position] = float(outcome.x[slot])
-            best = ProfilePoint(
+        ahead = forward.get(value)
+        behind = backward.get(value)
+        # A point both sweeps failed is omitted rather than filled with a
+        # placeholder. A point only one sweep reached keeps that answer, and the
+        # other side stays ``None`` so it reads as "not reached" and not as
+        # agreement.
+        candidates = [found for found in (ahead, behind) if found is not None]
+        if not candidates:
+            continue
+        winner = min(candidates, key=lambda found: found[0])
+        profile.append(
+            ProfilePoint(
                 value=float(value),
-                neg_log_likelihood=float(outcome.fun),
-                theta=(theta[0], theta[1], theta[2], theta[3], theta[4]),
+                neg_log_likelihood=winner[0],
+                theta=widen(value, winner[1]),
+                forward_nll=ahead[0] if ahead is not None else None,
+                forward_theta=widen(value, ahead[1]) if ahead is not None else None,
+                backward_nll=behind[0] if behind is not None else None,
+                backward_theta=widen(value, behind[1]) if behind is not None else None,
             )
-
-        if best is not None:
-            profile.append(best)
+        )
 
     return tuple(profile)
 

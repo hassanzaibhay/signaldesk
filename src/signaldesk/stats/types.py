@@ -94,6 +94,18 @@ class Contingency:
         empty = (self.a == 0) | (self.b == 0) | (self.c == 0) | (self.d == 0)
         return np.asarray(empty, dtype=np.bool_)
 
+    def rows(self, start: int, stop: int) -> Contingency:
+        """A row slice, for scoring a large table in chunks.
+
+        Every statistic here is per row, so a slice is scored identically to the
+        same rows inside the whole table - with the one exception of the MGPS
+        prior, which is fitted across rows and must be fitted on the full table
+        and passed in.
+        """
+        return Contingency(
+            a=self.a[start:stop], b=self.b[start:stop], c=self.c[start:stop], d=self.d[start:stop]
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class RorResult:
@@ -206,8 +218,11 @@ class EstimatorPanel:
     flag_prr: BoolArray
     flag_bcpnn: BoolArray
     flag_mgps: BoolArray
-    #: ROR, PRR and BCPNN together. Reportable whatever MGPS did.
-    flag_three_of_four: BoolArray
+    #: ROR, PRR and BCPNN together, a three-way conjunction. Reportable whatever
+    #: MGPS did. Named for its members rather than a count: this is not "any
+    #: three of the four agreed", which is a strictly larger set wherever MGPS
+    #: flags a pair the other three do not.
+    flag_ror_prr_bcpnn: BoolArray
     #: The conservative definition, or ``None`` when the MGPS prior is
     #: provisional. ``None`` rather than an array of ``False``: absent and
     #: negative are different answers, and a column of ``False`` would be

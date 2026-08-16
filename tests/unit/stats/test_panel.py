@@ -102,7 +102,7 @@ def test_a_provisional_prior_nulls_the_four_method_flag() -> None:
     assert panel.mgps_provisional
     assert panel.flag_all_four is None
     assert (
-        panel.flag_three_of_four.tolist()
+        panel.flag_ror_prr_bcpnn.tolist()
         == (panel.flag_ror & panel.flag_prr & panel.flag_bcpnn).tolist()
     )
 
@@ -112,4 +112,4 @@ def test_an_interior_prior_reports_all_four() -> None:
 
     assert not panel.mgps_provisional
     assert panel.flag_all_four is not None
-    assert panel.flag_all_four.tolist() == (panel.flag_three_of_four & panel.flag_mgps).tolist()
+    assert panel.flag_all_four.tolist() == (panel.flag_ror_prr_bcpnn & panel.flag_mgps).tolist()

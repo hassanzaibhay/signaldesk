@@ -14,9 +14,13 @@ from typing import Any
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
+from scipy.optimize import minimize
 
 from signaldesk.core.errors import EstimatorConvergenceError
 from signaldesk.stats.mgps import (
+    BOUNDS,
+    ProfilePoint,
     fit_hyperparameters,
     gamma_poisson_shrinker,
     mixture_fraction,
@@ -395,3 +399,166 @@ def test_the_profile_minimum_agrees_with_the_free_fit(reference_mgps: dict[str, 
 def test_profiling_an_unknown_parameter_is_refused() -> None:
     with pytest.raises(ValueError, match="unknown parameter"):
         profile_likelihood(np.ones(10), np.ones(10), parameter="lambda", grid=(1.0,))
+
+
+def test_both_sweeps_are_retained_on_every_profile_point(
+    reference_mgps: dict[str, Any],
+) -> None:
+    """The per-point minimum alone would hide where the basins differ.
+
+    Where the two directions disagree the likelihood has more than one optimum at
+    that grid point, and a profile assembled from one direction would report
+    whichever basin it happened to land in as the shape of the curve.
+    """
+    squashed = reference_mgps["squashed"]
+    count = np.asarray(squashed["N"], dtype=np.float64)
+    expected = np.asarray(squashed["E"], dtype=np.float64)
+    weights = np.asarray(squashed["weight"], dtype=np.float64)
+
+    profile = profile_likelihood(
+        count, expected, parameter="alpha1", grid=(0.5, 1.0, 2.0, 4.0), weights=weights
+    )
+
+    for point in profile:
+        assert point.forward_nll is not None
+        assert point.backward_nll is not None
+        # The reported value is the better of the two, never worse than either.
+        assert point.neg_log_likelihood <= point.forward_nll
+        assert point.neg_log_likelihood <= point.backward_nll
+        assert point.sweeps_agree == (
+            abs(point.forward_nll - point.backward_nll)
+            <= 1e-9 * max(abs(point.forward_nll), abs(point.backward_nll), 1.0)
+        )
+
+
+def test_a_point_reached_by_one_sweep_only_does_not_read_as_agreement() -> None:
+    """``sweeps_agree`` must not claim agreement it never observed."""
+    reached_once = ProfilePoint(
+        value=1.0, neg_log_likelihood=10.0, theta=(1.0, 1.0, 1.0, 1.0, 0.5), forward_nll=10.0
+    )
+    assert reached_once.backward_nll is None
+    assert reached_once.sweeps_agree
+
+    disagreeing = ProfilePoint(
+        value=1.0,
+        neg_log_likelihood=10.0,
+        theta=(1.0, 1.0, 1.0, 1.0, 0.5),
+        forward_nll=12.0,
+        backward_nll=10.0,
+    )
+    assert not disagreeing.sweeps_agree
+
+
+def test_continuation_beats_refitting_from_the_start_point_alone(
+    reference_mgps: dict[str, Any],
+) -> None:
+    """Carrying the neighbour's answer must never do worse than not carrying it.
+
+    Restricted to a single start point, the only thing the sweep has besides
+    that start is the vector solved at the previous grid point. Refitting each
+    point from the lone start on its own is therefore the honest baseline, and
+    the profile has to be at least as good as it everywhere. Continuation is a
+    search improvement and nothing more - it does not promise to reach whatever
+    the full start set reaches, and on this data it does not.
+    """
+    squashed = reference_mgps["squashed"]
+    count = np.asarray(squashed["N"], dtype=np.float64)
+    expected = np.asarray(squashed["E"], dtype=np.float64)
+    weights = np.asarray(squashed["weight"], dtype=np.float64)
+    grid = (0.5, 1.0, 2.0, 4.0)
+    lone = (0.2, 0.1, 2.0, 4.0, 1.0 / 3.0)
+
+    profile = profile_likelihood(
+        count,
+        expected,
+        parameter="alpha1",
+        grid=grid,
+        weights=weights,
+        start_points=(lone,),
+    )
+
+    free = [1, 2, 3, 4]
+    improved = False
+    for point in profile:
+
+        def objective(vector: NDArray[np.float64], fixed: float = point.value) -> float:
+            theta = (fixed, float(vector[0]), float(vector[1]), float(vector[2]), float(vector[3]))
+            value = negative_log_likelihood(theta, count, expected, weights=weights)
+            return value if np.isfinite(value) else 1e300
+
+        baseline = minimize(
+            objective,
+            np.asarray([lone[position] for position in free], dtype=np.float64),
+            method="L-BFGS-B",
+            bounds=[BOUNDS[position] for position in free],
+        )
+        assert point.neg_log_likelihood <= float(baseline.fun) + 1e-6
+        improved = improved or point.neg_log_likelihood < float(baseline.fun) - 1e-6
+
+    assert improved, "continuation never improved on the lone start; it is not wired in"
+
+
+def test_start_points_is_honoured(reference_mgps: dict[str, Any]) -> None:
+    """An empty start set leaves only continuation, which has nothing to seed."""
+    squashed = reference_mgps["squashed"]
+    profile = profile_likelihood(
+        np.asarray(squashed["N"], dtype=np.float64),
+        np.asarray(squashed["E"], dtype=np.float64),
+        parameter="alpha1",
+        grid=(1.0, 2.0),
+        weights=np.asarray(squashed["weight"], dtype=np.float64),
+        start_points=(),
+    )
+
+    assert profile == ()
+
+
+def test_the_progress_callback_reports_every_point_of_both_sweeps(
+    reference_mgps: dict[str, Any],
+) -> None:
+    """A full-corpus profile is hundreds of refits; without this it runs silent.
+
+    ``stats`` does no I/O, so progress can only leave this module through the
+    caller's callback. Every grid point must be reported once per direction,
+    including one that failed to converge - a silent gap would read as the
+    profile still working.
+    """
+    squashed = reference_mgps["squashed"]
+    grid = (0.5, 1.0, 2.0)
+    seen: list[tuple[str, float, float | None]] = []
+
+    profile_likelihood(
+        np.asarray(squashed["N"], dtype=np.float64),
+        np.asarray(squashed["E"], dtype=np.float64),
+        parameter="alpha1",
+        grid=grid,
+        weights=np.asarray(squashed["weight"], dtype=np.float64),
+        on_point=lambda direction, value, nll: seen.append((direction, value, nll)),
+    )
+
+    assert [value for direction, value, _ in seen if direction == "forward"] == list(grid)
+    assert [value for direction, value, _ in seen if direction == "backward"] == list(
+        reversed(grid)
+    )
+    assert all(nll is not None for _, _, nll in seen)
+
+
+def test_a_point_that_never_converges_is_reported_as_such(
+    reference_mgps: dict[str, Any],
+) -> None:
+    """``None`` says the refit failed, which is different from not being reached."""
+    squashed = reference_mgps["squashed"]
+    seen: list[tuple[str, float, float | None]] = []
+
+    profile = profile_likelihood(
+        np.asarray(squashed["N"], dtype=np.float64),
+        np.asarray(squashed["E"], dtype=np.float64),
+        parameter="alpha1",
+        grid=(1.0,),
+        weights=np.asarray(squashed["weight"], dtype=np.float64),
+        start_points=(),
+        on_point=lambda direction, value, nll: seen.append((direction, value, nll)),
+    )
+
+    assert profile == ()
+    assert seen == [("forward", 1.0, None), ("backward", 1.0, None)]
