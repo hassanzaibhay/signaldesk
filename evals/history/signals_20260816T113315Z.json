@@ -712,6 +712,6 @@
     "runs_at_unrecorded_commit": []
   },
   "schema_note": "flag_three_of_four was renamed to flag_ror_prr_bcpnn, which states the definition: the conjunction of ROR, PRR and BCPNN, not 'any three of the four agreed'. The run parquet for these runs still carries the old column name; this artifact carries the new one. The counts are unchanged - the rename is applied when the run is read, and the runs were not rebuilt.",
-  "writer_code_sha": "39568d4d177bc6978e59006521652a01e167e0b3",
-  "written_at": "2026-08-16T11:29:31.821348+00:00"
+  "writer_code_sha": "f5e08517a29791713efe766acc4784d9e22a53ba",
+  "written_at": "2026-08-16T11:33:15.200461+00:00"
 }

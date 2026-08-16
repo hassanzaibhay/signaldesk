@@ -670,7 +670,7 @@ than false, and `flag_ror_prr_bcpnn` over ROR, PRR and BCPNN is what these runs
 support.
 
 Every figure above comes from `signaldesk signals mgps-diagnostic`, recorded in
-`evals/history/signals_20260816T112931Z.json`.
+`evals/history/signals_20260816T113315Z.json`.
 
 ### Reference-set validation
 
