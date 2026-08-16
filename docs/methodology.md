@@ -586,57 +586,91 @@ likelihood?
 
 Settled by profile likelihood, not by refitting from more start points. `alpha1`
 was fixed on a grid and the remaining four parameters refitted at each point,
-over 497,975 squashed rows standing for 8,583,614 pairs:
+over 497,975 squashed rows standing for 8,583,614 pairs. The grid is swept
+forward and then backward, each point offering its solved vector as an extra
+start to the next; both sweeps are kept, because where they disagree the
+likelihood has more than one basin at that point.
 
-| `alpha1` | negative log-likelihood | excess over the minimum |
-|---|---|---|
-| 1e-06 | 16,580,220.18 | 0 |
-| 1e-05 | 16,580,224.58 | 4 |
-| 1e-04 | 16,580,268.56 | 48 |
-| 1e-03 | 16,580,708.15 | 488 |
-| 1e-02 | 16,585,080.77 | 4,861 |
-| 0.05 | 16,633,494.65 | 53,274 |
-| 0.1 | 16,626,118.68 | 45,898 |
-| 0.2 | 16,665,094.00 | 84,874 |
-| 0.5 | 16,743,082.52 | 162,862 |
-| 1.0 | 16,810,479.98 | 230,260 |
-| 2.0 | 16,893,696.20 | 313,476 |
-| 3.0 | 16,951,722.56 | 371,502 |
+The reading is one comparison: the likelihood at the bound against the best
+value anywhere on the grid. Monotonicity is reported next to it as an
+observation about shape and settles nothing on its own, since a curve can wander
+far from the bound while the bound is still the optimum.
 
-Monotone decreasing toward the bound, flattening as it approaches. No interior
-minimum. A zero-truncated negative binomial tends to the logarithmic
-distribution as its shape goes to zero, and that is a legitimate limit for a
-table where 68 percent of pairs are reported exactly once. The bound is the
-optimum, not an optimizer failure.
+| `alpha1` | negative log-likelihood | excess over the minimum | sweeps agree |
+|---|---|---|---|
+| 1e-06 | 16,580,220.1779 | 0 | yes |
+| 1e-05 | 16,580,224.5763 | 4 | yes |
+| 3e-05 | 16,580,234.3505 | 14 | yes |
+| 1e-04 | 16,580,268.5594 | 48 | yes |
+| 3e-04 | 16,580,366.3079 | 146 | **no** |
+| 1e-03 | 16,580,708.1533 | 488 | yes |
+| 3e-03 | 16,581,683.5304 | 1,463 | yes |
+| 1e-02 | 16,585,080.7681 | 4,861 | yes |
+| 0.02 | 16,589,887.7051 | 9,668 | yes |
+| 0.05 | 16,603,958.1053 | 23,738 | **no** |
+| 0.1 | 16,626,118.6817 | 45,899 | yes |
+| 0.2 | 16,665,094.0038 | 84,874 | yes |
+| 0.35 | 16,710,405.9863 | 130,186 | yes |
+| 0.5 | 16,743,082.5167 | 162,862 | yes |
+| 0.75 | 16,781,297.9905 | 201,078 | yes |
+| 1.0 | 16,810,479.9780 | 230,260 | yes |
+| 1.5 | 16,856,587.7199 | 276,368 | yes |
+| 2.0 | 16,893,696.1952 | 313,476 | yes |
+| 3.0 | 16,951,722.5586 | 371,502 | yes |
 
-One irregularity, recorded rather than smoothed: `alpha1 = 0.05` sits 7,376 nats
-above `alpha1 = 0.1`. Both are 45,000 to 53,000 nats above the boundary value,
-so it is a nested-refit local optimum at that grid point, not an interior
-minimum.
+The bound is 4.40 nats below the best grid point, at `alpha1 = 1e-05`, and the
+curve rises monotonically away from it. **The bound is the optimum, not a
+defective likelihood.** A zero-truncated negative binomial tends to the
+logarithmic distribution as its shape goes to zero, and that is a legitimate
+limit for a table where 68 percent of pairs are reported exactly once.
+
+The two sweeps disagree at `alpha1 = 3e-04` and `alpha1 = 0.05`, and each
+direction loses one of them: forward reaches 16,580,366.3079 at 3e-04 against
+backward's 16,580,366.8990, and backward reaches 16,603,958.1053 at 0.05 against
+forward's 16,604,082.9176. Recorded rather than merged away, because the
+disagreement is the evidence that those grid points carry more than one basin.
+
+An earlier single-direction profile put `alpha1 = 0.05` at 16,633,494.65, above
+its neighbour at 0.1, and that irregularity was recorded here as a nested-refit
+local optimum. Continuation confirms the diagnosis and removes it: the point
+now sits 29,536 nats lower, at 16,603,958.11, and below 0.1 as the shape
+requires. The earlier figure described the search, not the likelihood.
 
 **That does not make EBGM reportable.** The remaining question is whether the
-scores depend on the answer. Rescoring all 8,583,614 pairs at each profile point,
-over the 2,785,896 pairs at or above the minimum cell count:
+scores depend on the answer. Rescoring all 8,583,614 pairs at points across the
+profile, over the 2,785,896 pairs at or above the minimum cell count:
 
 | `alpha1` | flagged, EBGM05 > 2 | median | 90th pct | 99th pct |
 |---|---|---|---|---|
-| 1e-06 | 1,133,087 | 1.3804 | 10.3961 | 499.5705 |
+| 1e-06 (bound) | 1,133,093 | 1.3804 | 10.3960 | 499.5659 |
+| 1e-05 (grid argmin) | 1,133,100 | 1.3805 | 11.1331 | 506.3270 |
 | 1e-03 | 1,134,008 | 1.3810 | 17.4020 | 507.2114 |
 | 1e-02 | 1,141,400 | 1.3867 | 28.6227 | 507.3675 |
-| 0.1 | 1,174,919 | 1.4237 | 33.1267 | 510.0410 |
+| 0.1 | 1,174,917 | 1.4237 | 33.1268 | 510.0281 |
 | 1.0 | 1,379,260 | 1.9547 | 41.2583 | 531.6345 |
+| 3.0 | 1,301,053 | 1.6533 | 55.7130 | 501.5227 |
 
-The flagged count spans 1,133,087 to 1,379,260, a 17.9 percent relative spread,
-and the 90th percentile moves fourfold. Which `alpha1` is believed changes the
-reported signal count by about 246,000 pairs.
+The flagged count spans 1,133,093 to 1,379,260, a 21.7 percent relative spread,
+and the 90th percentile moves more than fivefold. Which `alpha1` is believed
+changes the reported signal count by about 246,000 pairs.
 
-So the boundary reading is load-bearing. The profile makes `alpha1` at its bound
-the defensible choice and 1,133,087 the defensible count, but that rests on
-accepting the logarithmic limit as a prior rather than as a degeneracy, and that
-is a judgement rather than something the likelihood settles. Until it is made:
-EBGM and EBGM05 are written to the signal table and are **not** measurements,
-`flag_all_four` is null rather than false, and `flag_three_of_four` over ROR,
-PRR and BCPNN is what these runs support.
+Two points on that table are load-bearing and the rest are context: the bound
+and the grid argmin, the pair the comparison above turns on. They differ by
+seven pairs out of 1,133,093. The 21.7 percent spread is driven by `alpha1 = 1`,
+which the likelihood puts 230,260 nats worse than the bound.
+
+So the boundary reading is settled but the reporting decision is not. The
+profile makes `alpha1` at its bound the defensible choice and 1,133,093 the
+defensible count, and the count is stable across the region the likelihood
+finds competitive. Quoting it still rests on accepting the logarithmic limit as
+a prior rather than as a degeneracy, and that is a judgement rather than
+something the likelihood settles. Until it is made: EBGM and EBGM05 are written
+to the signal table and are **not** measurements, `flag_all_four` is null rather
+than false, and `flag_ror_prr_bcpnn` over ROR, PRR and BCPNN is what these runs
+support.
+
+Every figure above comes from `signaldesk signals mgps-diagnostic`, recorded in
+`evals/history/signals_20260816T112931Z.json`.
 
 ### Reference-set validation
 

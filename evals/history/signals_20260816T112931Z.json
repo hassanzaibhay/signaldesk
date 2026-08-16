@@ -1,0 +1,717 @@
+{
+  "artifact": "signals",
+  "mgps_boundary_diagnostic": {
+    "bound_is_optimum": true,
+    "bound_minus_argmin": -4.398398581892252,
+    "decision_rule": "The bound is the genuine optimum when NLL at the bound is no worse than the minimum over the grid. Monotonicity is reported as an observation about shape and does not decide the reading.",
+    "ebgm05_at_bound": {
+      "alpha1": 1e-06,
+      "flagged_ebgm05_gt_2": 1133093,
+      "max": 30205.266071319173,
+      "median": 1.3804498910269483,
+      "q90": 10.396035348891393,
+      "q99": 499.5658700634933,
+      "theta": [
+        1e-06,
+        0.0018757024582439401,
+        0.18171863960460194,
+        0.26073540940597606,
+        0.15254026729319545
+      ]
+    },
+    "ebgm05_at_grid_argmin": {
+      "alpha1": 1e-05,
+      "flagged_ebgm05_gt_2": 1133100,
+      "max": 30205.250437061317,
+      "median": 1.3804509719949738,
+      "q90": 11.133102132982161,
+      "q99": 506.327017386729,
+      "theta": [
+        1e-05,
+        0.0018757041893423664,
+        0.18171623165621775,
+        0.26073565016787603,
+        0.1525394847506261
+      ]
+    },
+    "ebgm05_sensitivity": [
+      {
+        "alpha1": 1e-06,
+        "flagged_ebgm05_gt_2": 1133093,
+        "max": 30205.266071319173,
+        "median": 1.3804498910269483,
+        "q90": 10.396035348891393,
+        "q99": 499.5658700634933,
+        "theta": [
+          1e-06,
+          0.0018757024582439401,
+          0.18171863960460194,
+          0.26073540940597606,
+          0.15254026729319545
+        ]
+      },
+      {
+        "alpha1": 1e-05,
+        "flagged_ebgm05_gt_2": 1133100,
+        "max": 30205.250437061317,
+        "median": 1.3804509719949738,
+        "q90": 11.133102132982161,
+        "q99": 506.327017386729,
+        "theta": [
+          1e-05,
+          0.0018757041893423664,
+          0.18171623165621775,
+          0.26073565016787603,
+          0.1525394847506261
+        ]
+      },
+      {
+        "alpha1": 0.001,
+        "flagged_ebgm05_gt_2": 1134008,
+        "max": 30194.03187381998,
+        "median": 1.3810397147353783,
+        "q90": 17.40200365244909,
+        "q99": 507.2113993074068,
+        "theta": [
+          0.001,
+          0.0018767805628824472,
+          0.18116348326608656,
+          0.2603055579483444,
+          0.15219878171534634
+        ]
+      },
+      {
+        "alpha1": 0.01,
+        "flagged_ebgm05_gt_2": 1141400,
+        "max": 30095.38916675032,
+        "median": 1.3867029294980224,
+        "q90": 28.622743809278703,
+        "q99": 507.3674796385133,
+        "theta": [
+          0.01,
+          0.0018862884643306211,
+          0.1761207151598704,
+          0.2563159233028047,
+          0.1491231802803725
+        ]
+      },
+      {
+        "alpha1": 0.1,
+        "flagged_ebgm05_gt_2": 1174917,
+        "max": 29369.32430579624,
+        "median": 1.4236853348089187,
+        "q90": 33.12678495223746,
+        "q99": 510.02811590780436,
+        "theta": [
+          0.1,
+          0.0019589796851745295,
+          0.13215575019879303,
+          0.22079374777276276,
+          0.12207185757349538
+        ]
+      },
+      {
+        "alpha1": 1.0,
+        "flagged_ebgm05_gt_2": 1379260,
+        "max": 23178.462945492916,
+        "median": 1.9547144914445906,
+        "q90": 41.25830698834502,
+        "q99": 531.6344988155251,
+        "theta": [
+          1.0,
+          0.002769012146058444,
+          1e-06,
+          0.10936371149887796,
+          0.04337321410678197
+        ]
+      },
+      {
+        "alpha1": 3.0,
+        "flagged_ebgm05_gt_2": 1301053,
+        "max": 14801.760629366428,
+        "median": 1.6533373379097653,
+        "q90": 55.71304322883718,
+        "q99": 501.52270575110015,
+        "theta": [
+          3.0,
+          0.006029938516413172,
+          1e-06,
+          0.08772368134736766,
+          0.028715534252784777
+        ]
+      }
+    ],
+    "flagged_maximum": 1379260,
+    "flagged_minimum": 1133093,
+    "grid_argmin": {
+      "alpha1": 1e-05,
+      "nll": 16580224.576289872
+    },
+    "lower_bound": 1e-06,
+    "monotone_away_from_bound": true,
+    "nll_at_bound": 16580220.17789129,
+    "pairs": 8583614,
+    "parameter": "alpha1",
+    "profile": [
+      {
+        "alpha1": 1e-06,
+        "backward_nll": 16580220.17789129,
+        "forward_nll": 16580220.182863755,
+        "nll": 16580220.17789129,
+        "sweeps_agree": true,
+        "theta": [
+          1e-06,
+          0.0018757024582439401,
+          0.18171863960460194,
+          0.26073540940597606,
+          0.15254026729319545
+        ]
+      },
+      {
+        "alpha1": 1e-05,
+        "backward_nll": 16580224.576289872,
+        "forward_nll": 16580224.576289872,
+        "nll": 16580224.576289872,
+        "sweeps_agree": true,
+        "theta": [
+          1e-05,
+          0.0018757041893423664,
+          0.18171623165621775,
+          0.26073565016787603,
+          0.1525394847506261
+        ]
+      },
+      {
+        "alpha1": 3e-05,
+        "backward_nll": 16580234.350525178,
+        "forward_nll": 16580234.350525178,
+        "nll": 16580234.350525178,
+        "sweeps_agree": true,
+        "theta": [
+          3e-05,
+          0.0018757096372203237,
+          0.1817095164525492,
+          0.2607287110298314,
+          0.1525319711008085
+        ]
+      },
+      {
+        "alpha1": 0.0001,
+        "backward_nll": 16580268.559381193,
+        "forward_nll": 16580268.559381193,
+        "nll": 16580268.559381193,
+        "sweeps_agree": true,
+        "theta": [
+          0.0001,
+          0.0018756361828595274,
+          0.18164145077953214,
+          0.2606722441294853,
+          0.15250405087993393
+        ]
+      },
+      {
+        "alpha1": 0.0003,
+        "backward_nll": 16580366.899016347,
+        "forward_nll": 16580366.307864027,
+        "nll": 16580366.307864027,
+        "sweeps_agree": false,
+        "theta": [
+          0.0003,
+          0.0018768619701087525,
+          0.1816414507572669,
+          0.2606722708430084,
+          0.1525040508612403
+        ]
+      },
+      {
+        "alpha1": 0.001,
+        "backward_nll": 16580708.153250372,
+        "forward_nll": 16580708.153250372,
+        "nll": 16580708.153250372,
+        "sweeps_agree": true,
+        "theta": [
+          0.001,
+          0.0018767805628824472,
+          0.18116348326608656,
+          0.2603055579483444,
+          0.15219878171534634
+        ]
+      },
+      {
+        "alpha1": 0.003,
+        "backward_nll": 16581683.530432174,
+        "forward_nll": 16581683.530432174,
+        "nll": 16581683.530432174,
+        "sweeps_agree": true,
+        "theta": [
+          0.003,
+          0.0018789243143136126,
+          0.18002896292052212,
+          0.2594033238215693,
+          0.1515062595335696
+        ]
+      },
+      {
+        "alpha1": 0.01,
+        "backward_nll": 16585080.768110786,
+        "forward_nll": 16585080.768110786,
+        "nll": 16585080.768110786,
+        "sweeps_agree": true,
+        "theta": [
+          0.01,
+          0.0018862884643306211,
+          0.1761207151598704,
+          0.2563159233028047,
+          0.1491231802803725
+        ]
+      },
+      {
+        "alpha1": 0.02,
+        "backward_nll": 16589887.705068363,
+        "forward_nll": 16589887.705119282,
+        "nll": 16589887.705068363,
+        "sweeps_agree": true,
+        "theta": [
+          0.02,
+          0.001896337905598533,
+          0.170695262626722,
+          0.25199768971918113,
+          0.14578768560833014
+        ]
+      },
+      {
+        "alpha1": 0.05,
+        "backward_nll": 16603958.10533349,
+        "forward_nll": 16604082.917645186,
+        "nll": 16603958.10533349,
+        "sweeps_agree": false,
+        "theta": [
+          0.05,
+          0.0019233423688991551,
+          0.15527204577952503,
+          0.23960970635602716,
+          0.13628865335367737
+        ]
+      },
+      {
+        "alpha1": 0.1,
+        "backward_nll": 16626118.681715202,
+        "forward_nll": 16626118.681725942,
+        "nll": 16626118.681715202,
+        "sweeps_agree": true,
+        "theta": [
+          0.1,
+          0.0019589796851745295,
+          0.13215575019879303,
+          0.22079374777276276,
+          0.12207185757349538
+        ]
+      },
+      {
+        "alpha1": 0.2,
+        "backward_nll": 16665094.003800211,
+        "forward_nll": 16665094.003800211,
+        "nll": 16665094.003800211,
+        "sweeps_agree": true,
+        "theta": [
+          0.2,
+          0.0020032328556715702,
+          0.09332248186096236,
+          0.1892166558489671,
+          0.09903961397560897
+        ]
+      },
+      {
+        "alpha1": 0.35,
+        "backward_nll": 16710405.986325357,
+        "forward_nll": 16710405.986325357,
+        "nll": 16710405.986325357,
+        "sweeps_agree": true,
+        "theta": [
+          0.35,
+          0.002039893913732233,
+          0.04793441173236444,
+          0.15420125869366635,
+          0.0752543841905677
+        ]
+      },
+      {
+        "alpha1": 0.5,
+        "backward_nll": 16743082.516662303,
+        "forward_nll": 16743082.516672235,
+        "nll": 16743082.516662303,
+        "sweeps_agree": true,
+        "theta": [
+          0.5,
+          0.002084685475217511,
+          0.0132562834763244,
+          0.1300753799990388,
+          0.060303248745654195
+        ]
+      },
+      {
+        "alpha1": 0.75,
+        "backward_nll": 16781297.990528006,
+        "forward_nll": 16781297.990528006,
+        "nll": 16781297.990528006,
+        "sweeps_agree": true,
+        "theta": [
+          0.75,
+          0.0023732653833737957,
+          1e-06,
+          0.1155167940106622,
+          0.04892286637399112
+        ]
+      },
+      {
+        "alpha1": 1.0,
+        "backward_nll": 16810479.977972925,
+        "forward_nll": 16810479.977963462,
+        "nll": 16810479.977963462,
+        "sweeps_agree": true,
+        "theta": [
+          1.0,
+          0.002769012146058444,
+          1e-06,
+          0.10936371149887796,
+          0.04337321410678197
+        ]
+      },
+      {
+        "alpha1": 1.5,
+        "backward_nll": 16856587.719885472,
+        "forward_nll": 16856587.719885472,
+        "nll": 16856587.719885472,
+        "sweeps_agree": true,
+        "theta": [
+          1.5,
+          0.003608387197665114,
+          1e-06,
+          0.10104407536431555,
+          0.03709335750767873
+        ]
+      },
+      {
+        "alpha1": 2.0,
+        "backward_nll": 16893696.19522156,
+        "forward_nll": 16893696.19522156,
+        "nll": 16893696.19522156,
+        "sweeps_agree": true,
+        "theta": [
+          2.0,
+          0.00444395985788853,
+          1e-06,
+          0.0953645958063087,
+          0.03334648105465367
+        ]
+      },
+      {
+        "alpha1": 3.0,
+        "backward_nll": 16951722.558622357,
+        "forward_nll": 16951722.558618244,
+        "nll": 16951722.558618244,
+        "sweeps_agree": true,
+        "theta": [
+          3.0,
+          0.006029938516413172,
+          1e-06,
+          0.08772368134736766,
+          0.028715534252784777
+        ]
+      }
+    ],
+    "relative_spread": 0.21725224672643817,
+    "rows_after_squashing": 497975,
+    "run_id": "20260815T170508Z",
+    "sufficient_pairs": 2785896,
+    "sweeps_agree_everywhere": false,
+    "sweeps_disagree_at": [
+      0.0003,
+      0.05
+    ]
+  },
+  "quotable": {
+    "estimators": [
+      "ror",
+      "prr",
+      "bcpnn"
+    ],
+    "note": "Numbers safe to quote elsewhere. Anything absent from this list is either provisional or not yet measured.",
+    "withheld": [
+      "mgps"
+    ],
+    "withheld_reason": "The gamma mixture prior converged onto a bound on this corpus. EBGM and EBGM05 columns exist in the signal table and are not measurements. The profile likelihood shows the bound is the genuine optimum rather than an optimizer failure, but EBGM05 moves by 21.7 percent in flagged count across that profile, so which value is believed changes the reported number."
+  },
+  "reference_validation": {
+    "reason": "evals/reference_sets/ is empty. The Harpaz, OMOP and EU-ADR standards and the outcome-to-PT map are curated by hand and are not generated by this project. No AUROC, sensitivity or specificity is reported until they exist.",
+    "required_files": [
+      "evals/reference_sets/outcome_pt_map.yaml",
+      "evals/reference_sets/harpaz_2013.csv",
+      "evals/reference_sets/omop.csv",
+      "evals/reference_sets/euadr.csv"
+    ],
+    "status": "blocked"
+  },
+  "runs": [
+    {
+      "code_sha": "39568d4d177bc6978e59006521652a01e167e0b3",
+      "created_at": "2026-08-15T17:24:48.545269+00:00",
+      "data_snapshot": {
+        "2012Q4": "20562c821eebd248445b7618ad63222acbe45ecb90e9fa384c07a82516661368",
+        "2013Q1": "31df3e518d400a8ba0323629dd4c64809370f5d1c2e4d0711b32997066dcfc49",
+        "2013Q2": "1f954f7561f8c9408a7547fcbcbc786a7329b2fad78dca86ab67cb85188d7e39",
+        "2013Q3": "e440ac13442f573fdeae216dad5d2ffa5e24fb4815625fb5c0915068c72a7fd5",
+        "2013Q4": "2e36bab3c85215d3471dbe6562861668b1c2141b23d1d2f5b5bb43d0fe9b9c8e",
+        "2014Q1": "86836c2acd70848d0bc4eaa776247cbc4da08625400b949f2ccff38e64943031",
+        "2014Q2": "2fad8b257781c5c39c7f414355abdb11bf405efad897cf8cca16c393784e6405",
+        "2014Q3": "8b8b79a7381103f5f653ec5c011444e54401bdab1a92e78e6d2bbeca37ce40a2",
+        "2014Q4": "ab5e44fdd430113b1a4eba2262fe4fc0d67d51525328343348eecd7fed7e7f7f",
+        "2015Q1": "ba1fc85963cb55a041dfa3b106550a3c9af4467477b15c65ba6a39509b1d2909",
+        "2015Q2": "218cc382545ecbf8ba738720a5cc9e96253b30040512aecf0395cbb8af340158",
+        "2015Q3": "e87780d538d128908c2f4d8aeacaae548249af16ffd9d19924af8566e13b5f5d",
+        "2015Q4": "b738b69f999a23a46224ac57fbde11971caa21af23be05655b9dac58af003738",
+        "2016Q1": "1df9f39e415fea6aa578946950265e535088ab7ef80523dfe6a6ec9f402ac129",
+        "2016Q2": "7ee2937a94dda400eba9e411c8d95aa4731e020ff080774ba2a5aaf413458494",
+        "2016Q3": "cc1548f46763945f228d91aeceb90f24239a20faa51ffec9abddf32a886d7c7d",
+        "2016Q4": "203a04739b272a0fa7b0ba55b1a932d3825e13156f18cc121f2bae7efc062928",
+        "2017Q1": "8b347d55faae822a896c106681f9af40a9b5d858fef78b8023ae20d49f36c044",
+        "2017Q2": "e61cff7a813c413a1b074b21dd82db926dc34eb285478d8a7b12f1171ba4b8f6",
+        "2017Q3": "eb03aa80d900b9168b8807ed72c94992de2e601a514aab2ba7995b912f9a916a",
+        "2017Q4": "586976e775598f1261cea863703b24a6236c7a16645f4764aec67138d6bce885",
+        "2018Q1": "021761361fa3acebe517cf2d941e96a2a03ce6597fd03dda205b0c94a573395c",
+        "2018Q2": "cde475975ae7342a841c7a04c10618b94bc65555cee93c0215661ed0d65449b5",
+        "2018Q3": "b974e77d35a47e3e5f2d999f57c61037243a89c07f3826f242e20dc8f6063ba7",
+        "2018Q4": "8f659d11b94f04618e1f2202e18779399c3e47e272c03e0bcd023bdceea2e322",
+        "2019Q1": "51229f0e421b49c022ffbaccba696426e0787ca378d8c7b73bd89006f3f5e9e9",
+        "2019Q2": "1910995dfb006f0b97d610716440aa453de6b2d9ff7381fc05f64d442425e5c7",
+        "2019Q3": "7f02a06088a73cbf910f1cd065a685f8d262f34e6c534deedc1b8fa0de155b84",
+        "2019Q4": "ddbac5a8eb09739c968c77c6370de3ceed388c722197574d0a550f3c680a16fc",
+        "2020Q1": "3d5d38ca7aa7b254b472164a47c93f59a7103c0d6201e3b743559b4179db4a5d",
+        "2020Q2": "f9fe8e8b6d285a11018e399f4c3927440a0d8bfb52c7ad1025622388ad05de6a",
+        "2020Q3": "4ed47f09faaf8ea6f52bb1f5c19ca1fce1959d0a7d16a08360071a4a5a623b40",
+        "2020Q4": "22ed5117ddbd4f66577eb07a0d1e28dbfcbe66176400fbfbbda8ff23aa69a27d",
+        "2021Q1": "3432dc656ec0a4700a86f4865676417062ab0fc69067d8505355dca2fb43d563",
+        "2021Q2": "33d90c7ee20aebece837a981705ec6d84839d0ff14b0b0563ed0bc45e189ca6a",
+        "2021Q3": "32db043748af1fedcf03bf2635dcf1aa4dbd5cc4f8440f67ea81c5670f713b36",
+        "2021Q4": "8d41ec8d36aad4de3450840517bd52b8b21271ac936b52cb851f0654ea13a15b",
+        "2022Q1": "76cb17f81e49b145aefb108c7d6d486a8d39a86159e91de2e09f9ad9954c7291",
+        "2022Q2": "3cc5a4fa96ff1ec58da4669e1e415cbf50812beef582244720cfa87a8df70d4f",
+        "2022Q3": "810689d34c0f1a81599996f8d59619a2efa887ffda68850f9c2ab941c075986c",
+        "2022Q4": "1bbf1b50724ff4048d8113ceced08b53707b19c4d6fd5cf47add01329ea7c534",
+        "2023Q1": "3b5d7ee3fc78990bdde16db9e4a43f448344f2cecb835bfc6b7cbcecf726d8e6",
+        "2023Q2": "e7f2f051317adf1561063d8241a64a015bc1694d64586386160eb60045f822fa",
+        "2023Q3": "86120ac44667eaeed9551a53ea8af20ef33fe1fbdf835a52662e52fb7077dbb6",
+        "2023Q4": "7e6b72848ed670900eaf78d24983c845f077091f71ffa7b9c310d590faebac62",
+        "2024Q1": "12a086c473666c2c323c13ae82e0cf333ac2c8e63538ec5488054fcad5d5ae18",
+        "2024Q2": "5d4d58828916a3823ae12c97d64d2849723d964793e4d1e436d98833f72ff05b",
+        "2024Q3": "c13ce123e26e12d1533ebf494e482e7ae697d18b7169b9627f8b576a75111030",
+        "2024Q4": "3866a1ccc5b08fcbc35c333239efd651ca08fa861244ac90f73d46ca5b17ab59",
+        "2025Q1": "51c1dc440733fbbb0b6913b5382ce5b9a3510642a0c6bfd6239d26aa18346b69",
+        "2025Q2": "e731a72f1c85b79c5d86706d9f8708cc2f4cef75c0a9caac7c28074da02a9074",
+        "2025Q3": "a02b89ba6bc56e7c8c197f44389f1d3a816fe1bc2c1374b70a50dacf3d7012c3",
+        "2025Q4": "1a31e6fdedd7442ffb0cd9d0dc8d2d27ee738e5ee2da34e629d82e47f8d418b6",
+        "2026Q1": "ed36733361701ed5cf9bf240be4a360a765126e9ca06b3e5fd3fae7fe2ae5813",
+        "2026Q2": "90213500721ecaf976ee45d8ad04aa2dbb80861d93c87fef67ccaf515919bf2a"
+      },
+      "flag_counts": {
+        "all_four": null,
+        "all_four_including_insufficient": null,
+        "bcpnn": 1393815,
+        "bcpnn_including_insufficient": 1393815,
+        "haldane_anscombe_corrected": 416890,
+        "insufficient": 5797718,
+        "mgps": 1133092,
+        "mgps_including_insufficient": 1133092,
+        "prr": 1623081,
+        "prr_including_insufficient": 4039013,
+        "ror": 1693733,
+        "ror_including_insufficient": 1693733,
+        "ror_prr_bcpnn": 1393815,
+        "ror_prr_bcpnn_including_insufficient": 1393815
+      },
+      "ic_divergence": {
+        "max_absolute": 22.546467923308555,
+        "median_absolute": 1.5099960685468967,
+        "share_above_one": 0.5776303547666519
+      },
+      "mgps": {
+        "hyperparameters": {
+          "alpha1": 1e-06,
+          "alpha2": 0.18172296860385487,
+          "beta1": 0.0018756922819560243,
+          "beta2": 0.26074066667408924,
+          "iterations": 52,
+          "n_pairs_fitted": 8583614,
+          "n_rows_after_squashing": 497975,
+          "neg_log_likelihood": 16580220.177831749,
+          "on_boundary": [
+            "alpha1"
+          ],
+          "p": 0.15254235910542072
+        },
+        "note": "The gamma mixture prior converged onto a bound, so EBGM and EBGM05 are written but are not measurements and must not be quoted. flag_all_four is null for the same reason; flag_three_of_four is what this run supports.",
+        "provisional": true
+      },
+      "pairs": {
+        "at_or_above_min_a": 2785896,
+        "observed_and_written": 8583614
+      },
+      "params": {
+        "drug_key": "raw_string",
+        "end_quarter": null,
+        "min_a": 3,
+        "role_codes": "PS,SS",
+        "roles": "ps_ss",
+        "start_quarter": null
+      },
+      "performance": {
+        "peak_rss_bytes": 8810639360,
+        "peak_rss_gib": 8.206,
+        "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+        "seconds": 1180.85
+      },
+      "population": {
+        "cases_with_no_coded_term": 49,
+        "cases_with_no_drug_row_in_scope": 469,
+        "deduplicated_cases": 16054992,
+        "duplicates_removed": 4479514
+      },
+      "run_id": "20260815T170508Z"
+    },
+    {
+      "code_sha": "39568d4d177bc6978e59006521652a01e167e0b3",
+      "created_at": "2026-08-15T17:32:32.355779+00:00",
+      "data_snapshot": {
+        "2012Q4": "20562c821eebd248445b7618ad63222acbe45ecb90e9fa384c07a82516661368",
+        "2013Q1": "31df3e518d400a8ba0323629dd4c64809370f5d1c2e4d0711b32997066dcfc49",
+        "2013Q2": "1f954f7561f8c9408a7547fcbcbc786a7329b2fad78dca86ab67cb85188d7e39",
+        "2013Q3": "e440ac13442f573fdeae216dad5d2ffa5e24fb4815625fb5c0915068c72a7fd5",
+        "2013Q4": "2e36bab3c85215d3471dbe6562861668b1c2141b23d1d2f5b5bb43d0fe9b9c8e",
+        "2014Q1": "86836c2acd70848d0bc4eaa776247cbc4da08625400b949f2ccff38e64943031",
+        "2014Q2": "2fad8b257781c5c39c7f414355abdb11bf405efad897cf8cca16c393784e6405",
+        "2014Q3": "8b8b79a7381103f5f653ec5c011444e54401bdab1a92e78e6d2bbeca37ce40a2",
+        "2014Q4": "ab5e44fdd430113b1a4eba2262fe4fc0d67d51525328343348eecd7fed7e7f7f",
+        "2015Q1": "ba1fc85963cb55a041dfa3b106550a3c9af4467477b15c65ba6a39509b1d2909",
+        "2015Q2": "218cc382545ecbf8ba738720a5cc9e96253b30040512aecf0395cbb8af340158",
+        "2015Q3": "e87780d538d128908c2f4d8aeacaae548249af16ffd9d19924af8566e13b5f5d",
+        "2015Q4": "b738b69f999a23a46224ac57fbde11971caa21af23be05655b9dac58af003738",
+        "2016Q1": "1df9f39e415fea6aa578946950265e535088ab7ef80523dfe6a6ec9f402ac129",
+        "2016Q2": "7ee2937a94dda400eba9e411c8d95aa4731e020ff080774ba2a5aaf413458494",
+        "2016Q3": "cc1548f46763945f228d91aeceb90f24239a20faa51ffec9abddf32a886d7c7d",
+        "2016Q4": "203a04739b272a0fa7b0ba55b1a932d3825e13156f18cc121f2bae7efc062928",
+        "2017Q1": "8b347d55faae822a896c106681f9af40a9b5d858fef78b8023ae20d49f36c044",
+        "2017Q2": "e61cff7a813c413a1b074b21dd82db926dc34eb285478d8a7b12f1171ba4b8f6",
+        "2017Q3": "eb03aa80d900b9168b8807ed72c94992de2e601a514aab2ba7995b912f9a916a",
+        "2017Q4": "586976e775598f1261cea863703b24a6236c7a16645f4764aec67138d6bce885",
+        "2018Q1": "021761361fa3acebe517cf2d941e96a2a03ce6597fd03dda205b0c94a573395c",
+        "2018Q2": "cde475975ae7342a841c7a04c10618b94bc65555cee93c0215661ed0d65449b5",
+        "2018Q3": "b974e77d35a47e3e5f2d999f57c61037243a89c07f3826f242e20dc8f6063ba7",
+        "2018Q4": "8f659d11b94f04618e1f2202e18779399c3e47e272c03e0bcd023bdceea2e322",
+        "2019Q1": "51229f0e421b49c022ffbaccba696426e0787ca378d8c7b73bd89006f3f5e9e9",
+        "2019Q2": "1910995dfb006f0b97d610716440aa453de6b2d9ff7381fc05f64d442425e5c7",
+        "2019Q3": "7f02a06088a73cbf910f1cd065a685f8d262f34e6c534deedc1b8fa0de155b84",
+        "2019Q4": "ddbac5a8eb09739c968c77c6370de3ceed388c722197574d0a550f3c680a16fc",
+        "2020Q1": "3d5d38ca7aa7b254b472164a47c93f59a7103c0d6201e3b743559b4179db4a5d",
+        "2020Q2": "f9fe8e8b6d285a11018e399f4c3927440a0d8bfb52c7ad1025622388ad05de6a",
+        "2020Q3": "4ed47f09faaf8ea6f52bb1f5c19ca1fce1959d0a7d16a08360071a4a5a623b40",
+        "2020Q4": "22ed5117ddbd4f66577eb07a0d1e28dbfcbe66176400fbfbbda8ff23aa69a27d",
+        "2021Q1": "3432dc656ec0a4700a86f4865676417062ab0fc69067d8505355dca2fb43d563",
+        "2021Q2": "33d90c7ee20aebece837a981705ec6d84839d0ff14b0b0563ed0bc45e189ca6a",
+        "2021Q3": "32db043748af1fedcf03bf2635dcf1aa4dbd5cc4f8440f67ea81c5670f713b36",
+        "2021Q4": "8d41ec8d36aad4de3450840517bd52b8b21271ac936b52cb851f0654ea13a15b",
+        "2022Q1": "76cb17f81e49b145aefb108c7d6d486a8d39a86159e91de2e09f9ad9954c7291",
+        "2022Q2": "3cc5a4fa96ff1ec58da4669e1e415cbf50812beef582244720cfa87a8df70d4f",
+        "2022Q3": "810689d34c0f1a81599996f8d59619a2efa887ffda68850f9c2ab941c075986c",
+        "2022Q4": "1bbf1b50724ff4048d8113ceced08b53707b19c4d6fd5cf47add01329ea7c534",
+        "2023Q1": "3b5d7ee3fc78990bdde16db9e4a43f448344f2cecb835bfc6b7cbcecf726d8e6",
+        "2023Q2": "e7f2f051317adf1561063d8241a64a015bc1694d64586386160eb60045f822fa",
+        "2023Q3": "86120ac44667eaeed9551a53ea8af20ef33fe1fbdf835a52662e52fb7077dbb6",
+        "2023Q4": "7e6b72848ed670900eaf78d24983c845f077091f71ffa7b9c310d590faebac62",
+        "2024Q1": "12a086c473666c2c323c13ae82e0cf333ac2c8e63538ec5488054fcad5d5ae18",
+        "2024Q2": "5d4d58828916a3823ae12c97d64d2849723d964793e4d1e436d98833f72ff05b",
+        "2024Q3": "c13ce123e26e12d1533ebf494e482e7ae697d18b7169b9627f8b576a75111030",
+        "2024Q4": "3866a1ccc5b08fcbc35c333239efd651ca08fa861244ac90f73d46ca5b17ab59",
+        "2025Q1": "51c1dc440733fbbb0b6913b5382ce5b9a3510642a0c6bfd6239d26aa18346b69",
+        "2025Q2": "e731a72f1c85b79c5d86706d9f8708cc2f4cef75c0a9caac7c28074da02a9074",
+        "2025Q3": "a02b89ba6bc56e7c8c197f44389f1d3a816fe1bc2c1374b70a50dacf3d7012c3",
+        "2025Q4": "1a31e6fdedd7442ffb0cd9d0dc8d2d27ee738e5ee2da34e629d82e47f8d418b6",
+        "2026Q1": "ed36733361701ed5cf9bf240be4a360a765126e9ca06b3e5fd3fae7fe2ae5813",
+        "2026Q2": "90213500721ecaf976ee45d8ad04aa2dbb80861d93c87fef67ccaf515919bf2a"
+      },
+      "flag_counts": {
+        "all_four": null,
+        "all_four_including_insufficient": null,
+        "bcpnn": 603100,
+        "bcpnn_including_insufficient": 603100,
+        "haldane_anscombe_corrected": 188504,
+        "insufficient": 3674321,
+        "mgps": 360724,
+        "mgps_including_insufficient": 360724,
+        "prr": 726832,
+        "prr_including_insufficient": 2059181,
+        "ror": 769906,
+        "ror_including_insufficient": 769906,
+        "ror_prr_bcpnn": 603100,
+        "ror_prr_bcpnn_including_insufficient": 603100
+      },
+      "ic_divergence": {
+        "max_absolute": 22.546467923308555,
+        "median_absolute": 1.2340149621254444,
+        "share_above_one": 0.5389532432355351
+      },
+      "mgps": {
+        "hyperparameters": {
+          "alpha1": 1e-06,
+          "alpha2": 0.3129634350889246,
+          "beta1": 0.006016771222791028,
+          "beta2": 0.4929817056934155,
+          "iterations": 26,
+          "n_pairs_fitted": 5189324,
+          "n_rows_after_squashing": 331011,
+          "neg_log_likelihood": 8889498.722583177,
+          "on_boundary": [
+            "alpha1"
+          ],
+          "p": 0.13114911571843305
+        },
+        "note": "The gamma mixture prior converged onto a bound, so EBGM and EBGM05 are written but are not measurements and must not be quoted. flag_all_four is null for the same reason; flag_three_of_four is what this run supports.",
+        "provisional": true
+      },
+      "pairs": {
+        "at_or_above_min_a": 1515003,
+        "observed_and_written": 5189324
+      },
+      "params": {
+        "drug_key": "raw_string",
+        "end_quarter": null,
+        "min_a": 3,
+        "role_codes": "PS",
+        "roles": "ps",
+        "start_quarter": null
+      },
+      "performance": {
+        "peak_rss_bytes": 8554627072,
+        "peak_rss_gib": 7.967,
+        "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+        "seconds": 452.32
+      },
+      "population": {
+        "cases_with_no_coded_term": 49,
+        "cases_with_no_drug_row_in_scope": 1869,
+        "deduplicated_cases": 16054992,
+        "duplicates_removed": 4479514
+      },
+      "run_id": "20260815T172501Z"
+    }
+  ],
+  "runs_code_sha": {
+    "distinct": [
+      "39568d4d177bc6978e59006521652a01e167e0b3"
+    ],
+    "note": "Every included run recorded the commit it was built at.",
+    "runs_at_unrecorded_commit": []
+  },
+  "schema_note": "flag_three_of_four was renamed to flag_ror_prr_bcpnn, which states the definition: the conjunction of ROR, PRR and BCPNN, not 'any three of the four agreed'. The run parquet for these runs still carries the old column name; this artifact carries the new one. The counts are unchanged - the rename is applied when the run is read, and the runs were not rebuilt.",
+  "writer_code_sha": "39568d4d177bc6978e59006521652a01e167e0b3",
+  "written_at": "2026-08-16T11:29:31.821348+00:00"
+}
