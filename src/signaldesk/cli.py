@@ -437,6 +437,17 @@ def signals_build(
             ),
         ),
     ] = None,
+    mgps_adjudicated: Annotated[
+        bool,
+        typer.Option(
+            "--mgps-adjudicated",
+            help=(
+                "Treat a boundary MGPS fit as reportable, so flag_all_four is "
+                "computed rather than null. Set only when a profile likelihood "
+                "has settled the boundary; 'signals mgps-diagnostic' produces it."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Recompute contingency tables and the four estimators over the corpus.
 
@@ -460,7 +471,7 @@ def signals_build(
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
-    record, path = build_signals(spec, chunk_rows=chunk_rows)
+    record, path = build_signals(spec, chunk_rows=chunk_rows, mgps_adjudicated=mgps_adjudicated)
 
     typer.echo(f"run:                 {record.run_id}")
     typer.echo(f"drug key:            {record.params['drug_key']}")
@@ -510,13 +521,32 @@ def signals_artifact(
             ),
         ),
     ] = None,
+    mgps_adjudicated: Annotated[
+        bool,
+        typer.Option(
+            "--mgps-adjudicated",
+            help=(
+                "Lift the withholding on a boundary MGPS fit, making EBGM and "
+                "EBGM05 quotable and flag_all_four reportable. Requires "
+                "--mgps-diagnostic, and refuses a diagnostic saying the bound is "
+                "not the optimum. This records a judgement about a measured "
+                "sensitivity; it is never inferred."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Collect signal runs into one committed artifact under evals/history/."""
     _setup_django()
 
     from signaldesk.analytics.signals import write_history_artifact
 
-    path = write_history_artifact(runs, diagnostics=diagnostics)
+    try:
+        path = write_history_artifact(
+            runs, diagnostics=diagnostics, mgps_adjudicated=mgps_adjudicated
+        )
+    except ValueError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=1) from error
     typer.echo(f"written to {path}")
 
 

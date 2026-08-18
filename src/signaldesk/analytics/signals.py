@@ -325,6 +325,7 @@ def build(
     settings: Settings | None = None,
     *,
     chunk_rows: int | None = None,
+    mgps_adjudicated: bool = False,
 ) -> tuple[SignalRun, Path]:
     """Build, score and persist one signal run. Returns the record and its path.
 
@@ -365,6 +366,7 @@ def build(
             min_a=spec.min_a,
             hyperparameters=prior,
             mgps_allow_boundary=True,
+            mgps_boundary_adjudicated=mgps_adjudicated,
         )
         _rows(pairs, panel, run_id, start=start, stop=stop).write_parquet(
             partition / f"part-{index}.parquet", compression="zstd"
@@ -403,7 +405,7 @@ def build(
             "n_rows_after_squashing": hyper.n_fitted_rows,
             "on_boundary": list(hyper.on_boundary),
         },
-        mgps_provisional=hyper.provisional,
+        mgps_provisional=panel.mgps_provisional,
         flag_counts=flag_counts,
         ic_divergence=_ic_divergence_from_gap(
             np.concatenate(gaps) if gaps else np.asarray([], dtype=np.float64)
@@ -527,6 +529,30 @@ def _is_provisional(run: dict[str, object]) -> bool:
     return isinstance(mgps, dict) and bool(mgps.get("provisional"))
 
 
+def _complete_all_four(run: dict[str, object], settings: Settings | None = None) -> bool:
+    """Fill in ``all_four`` for a run built while MGPS was withheld.
+
+    The run wrote null because a four-method count resting on an unadjudicated
+    prior would have been a headline number resting on an unvalidated one. The
+    prior has since been adjudicated, and the count is exact from what the run
+    already persisted: ``flag_ror_prr_bcpnn & flag_mgps`` per row, headline over
+    the pairs at or above the minimum cell count.
+
+    Recomputing here rather than rebuilding the run keeps the run immutable and
+    keeps its ``run_id`` - which the committed diagnostic names - intact. Returns
+    whether anything was filled in, so the artifact can say so.
+    """
+    counts = run.get("flag_counts")
+    if not isinstance(counts, dict) or counts.get("all_four") is not None:
+        return False
+
+    frame = read_run(str(run["run_id"]), settings)
+    both = frame["flag_ror_prr_bcpnn"].to_numpy() & frame["flag_mgps"].to_numpy()
+    counts["all_four"] = int(np.sum(both & ~frame["insufficient"].to_numpy()))
+    counts["all_four_including_insufficient"] = int(np.sum(both))
+    return True
+
+
 def _withheld_reason(diagnostic: dict[str, object] | None) -> str:
     """Why MGPS is withheld, stating only what was actually measured.
 
@@ -567,28 +593,162 @@ def _withheld_reason(diagnostic: dict[str, object] | None) -> str:
     )
 
 
+def _flagged_at(diagnostic: dict[str, object], key: str) -> int | None:
+    """The flagged count from one scored point of the diagnostic."""
+    point = diagnostic.get(key)
+    if not isinstance(point, dict):
+        return None
+    value = point.get("flagged_ebgm05_gt_2")
+    return int(value) if isinstance(value, int) else None
+
+
+def _mgps_adjudication(diagnostic: dict[str, object]) -> dict[str, object]:
+    """The recorded basis for accepting a boundary fit.
+
+    Every figure is read from the diagnostic rather than written here, for the
+    same reason the withheld spread is: a constant in this file would be
+    published for every future run whatever that run measured.
+
+    The sensitivity figure is the movement between the bound and the grid
+    argmin. Those are the two points the reading turns on, and they are where the
+    likelihood has support. The full-profile spread is recorded next to it as
+    context, with the point driving it and how far the likelihood puts that point
+    from the bound, because a spread measured across values the data excludes is
+    not a sensitivity result.
+    """
+    bound = _flagged_at(diagnostic, "ebgm05_at_bound")
+    argmin = _flagged_at(diagnostic, "ebgm05_at_grid_argmin")
+    delta = abs(argmin - bound) if bound is not None and argmin is not None else None
+
+    profile = diagnostic.get("profile")
+    at_bound = diagnostic.get("nll_at_bound")
+    sensitivity = diagnostic.get("ebgm05_sensitivity")
+    driver: dict[str, object] | None = None
+    if (
+        isinstance(profile, list)
+        and isinstance(at_bound, int | float)
+        and isinstance(sensitivity, list)
+    ):
+        scored = [
+            row
+            for row in sensitivity
+            if isinstance(row, dict) and isinstance(row.get("flagged_ebgm05_gt_2"), int)
+        ]
+        worst = max(
+            scored,
+            key=lambda row: int(row["flagged_ebgm05_gt_2"]),
+            default=None,
+        )
+        if worst is not None:
+            point = next(
+                (p for p in profile if isinstance(p, dict) and p.get("alpha1") == worst["alpha1"]),
+                None,
+            )
+            driver = {
+                "alpha1": worst["alpha1"],
+                "flagged_ebgm05_gt_2": int(worst["flagged_ebgm05_gt_2"]),
+                "nll_excess_over_bound": (
+                    float(point["nll"]) - float(at_bound)
+                    if isinstance(point, dict) and isinstance(point.get("nll"), int | float)
+                    else None
+                ),
+            }
+
+    return {
+        "adjudicated": True,
+        "criterion": (
+            "Whether EBGM05 moves materially across the profile, fixed before the "
+            "diagnostic ran. The sensitivity figure is the movement between the "
+            "bound and the grid argmin; the full-profile spread is context."
+        ),
+        "bound_is_optimum": diagnostic.get("bound_is_optimum"),
+        "monotone_away_from_bound": diagnostic.get("monotone_away_from_bound"),
+        "near_bound_sensitivity": {
+            "bound_flagged": bound,
+            "grid_argmin_flagged": argmin,
+            "flagged_delta": delta,
+            "flagged_delta_relative_to_bound": (
+                delta / bound if delta is not None and bound else None
+            ),
+        },
+        "full_profile_context": {
+            "relative_spread": diagnostic.get("relative_spread"),
+            "relative_spread_denominator": "flagged_minimum",
+            "flagged_minimum": diagnostic.get("flagged_minimum"),
+            "flagged_maximum": diagnostic.get("flagged_maximum"),
+            "driven_by": driver,
+            "note": (
+                "A spread measured across grid points the likelihood rejects is "
+                "not a sensitivity result. It is recorded so the near-bound "
+                "figure can be read against it."
+            ),
+        },
+    }
+
+
 def write_history_artifact(
     run_ids: Sequence[str],
     settings: Settings | None = None,
     *,
     root: Path | None = None,
     diagnostics: Path | None = None,
+    mgps_adjudicated: bool = False,
 ) -> Path:
     """Collect the named runs into one committed artifact.
 
     One file, not one per run: the primary analysis and its sensitivity run are
     read together or not at all, and splitting them invites a number being
     quoted from one while the caption describes the other.
+
+    ``mgps_adjudicated`` lifts the withholding on a boundary fit. It is an
+    explicit input and is never inferred from the diagnostic: whether a measured
+    sensitivity is small enough to report on is a judgement, not something the
+    numbers decide. What the numbers do decide is whether the judgement is
+    available to make, so this refuses without a diagnostic, and refuses on a
+    diagnostic saying the bound is not the optimum.
     """
     if not run_ids:
         message = "at least one run is needed to write an artifact"
         raise ValueError(message)
 
     runs = [read_record(run_id, settings) for run_id in run_ids]
-    provisional = [run["run_id"] for run in runs if _is_provisional(run)]
-    diagnostic = (
+    loaded: dict[str, object] | None = (
         json.loads(diagnostics.read_text(encoding="utf-8")) if diagnostics is not None else None
     )
+    diagnostic: dict[str, object] | None = loaded if isinstance(loaded, dict) else None
+
+    if mgps_adjudicated:
+        if diagnostic is None:
+            message = (
+                "mgps_adjudicated needs the diagnostic it rests on; pass the profile "
+                "likelihood written by 'signaldesk signals mgps-diagnostic'"
+            )
+            raise ValueError(message)
+        if not diagnostic.get("bound_is_optimum"):
+            message = (
+                "the diagnostic reports the bound is not the optimum, so the fit is "
+                "defective and cannot be adjudicated as reportable"
+            )
+            raise ValueError(message)
+
+    completed = [
+        run["run_id"] for run in runs if mgps_adjudicated and _complete_all_four(run, settings)
+    ]
+    if mgps_adjudicated:
+        for run in runs:
+            mgps = run.get("mgps")
+            if isinstance(mgps, dict) and mgps.get("provisional"):
+                # Policy text, regenerated. The measured facts beside it -
+                # provisional, on_boundary, the hyperparameters - are the run's
+                # own record and are left exactly as it wrote them.
+                mgps["note"] = (
+                    "The gamma mixture prior converged onto a bound. The profile "
+                    "likelihood recorded in this artifact settles that the bound "
+                    "is the optimum and that EBGM05 does not move materially "
+                    "across it, so EBGM and EBGM05 are reportable and "
+                    "flag_all_four is computed. See mgps_adjudication."
+                )
+    provisional = [run["run_id"] for run in runs if not mgps_adjudicated and _is_provisional(run)]
 
     shas = sorted({str(run.get("code_sha", "unknown")) for run in runs})
     unrecorded = [run["run_id"] for run in runs if str(run.get("code_sha", "unknown")) == "unknown"]
@@ -630,16 +790,33 @@ def write_history_artifact(
             ],
         },
         "mgps_boundary_diagnostic": diagnostic,
+        "mgps_adjudication": (
+            _mgps_adjudication(diagnostic) if mgps_adjudicated and diagnostic else None
+        ),
         "quotable": {
             "note": (
                 "Numbers safe to quote elsewhere. Anything absent from this list is "
                 "either provisional or not yet measured."
             ),
-            "estimators": ["ror", "prr", "bcpnn"],
+            "estimators": ["ror", "prr", "bcpnn"]
+            if provisional
+            else ["ror", "prr", "bcpnn", "mgps"],
             "withheld": ["mgps"] if provisional else [],
             "withheld_reason": _withheld_reason(diagnostic) if provisional else None,
         },
     }
+
+    if completed:
+        document["flag_all_four_note"] = (
+            "These runs wrote flag_all_four as null, because they were built "
+            "while the MGPS boundary was unadjudicated. The count here is "
+            "recomputed from what each run persisted - flag_ror_prr_bcpnn and "
+            "flag_mgps per row, headline over pairs at or above the minimum cell "
+            "count - rather than by rebuilding, so the runs stay immutable and "
+            "keep the run_id the diagnostic names. The flag_all_four column in "
+            "their parquet is still null; the next build writes it natively. "
+            f"Completed here for: {', '.join(str(run) for run in completed)}."
+        )
 
     if _uses_legacy_flag_name(run_ids, settings):
         document["schema_note"] = (

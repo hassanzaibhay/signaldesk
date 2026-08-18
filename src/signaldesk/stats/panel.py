@@ -37,6 +37,7 @@ def estimate_all(
     min_a: int = MIN_CELL_A,
     hyperparameters: MgpsHyperparameters | None = None,
     mgps_allow_boundary: bool = False,
+    mgps_boundary_adjudicated: bool = False,
 ) -> EstimatorPanel:
     """Run all four estimators and apply the locked thresholds.
 
@@ -50,6 +51,17 @@ def estimate_all(
     on a prior that is an artefact of the feasible region would be a headline
     number resting on an unvalidated one. ``flag_ror_prr_bcpnn`` is what such a
     run can report.
+
+    ``mgps_boundary_adjudicated`` says that boundary has been ruled on, and the
+    scores derived from it are no longer withheld: ``flag_all_four`` is computed.
+    The ruling is made outside this function, on a profile likelihood - whether
+    the bound is the optimum, and whether the scores move across the profile -
+    because a fit cannot conclude anything about its own boundary from the inside.
+    ``analytics.mgps_diagnostic`` produces that evidence.
+
+    Adjudication changes only what is reported. ``hyperparameters.on_boundary``
+    still names every pinned parameter: that one sat on a bound is a measured
+    fact and stays recorded whatever the ruling.
 
     ``flag_ror_prr_bcpnn`` is the conjunction of those three estimators, not a
     k-of-n rule over all four. Where MGPS flags a pair the other three do not,
@@ -69,7 +81,7 @@ def estimate_all(
     flag_mgps = mgps.flag(mgps_result)
     flag_ror_prr_bcpnn = flag_ror & flag_prr & flag_bcpnn
 
-    provisional = mgps_result.hyperparameters.provisional
+    provisional = mgps_result.hyperparameters.provisional and not mgps_boundary_adjudicated
 
     return EstimatorPanel(
         contingency=table,
@@ -84,5 +96,6 @@ def estimate_all(
         flag_ror_prr_bcpnn=flag_ror_prr_bcpnn,
         flag_all_four=None if provisional else flag_ror_prr_bcpnn & flag_mgps,
         mgps_provisional=provisional,
+        mgps_boundary_adjudicated=mgps_boundary_adjudicated,
         insufficient=np.asarray(table.a < min_a, dtype=np.bool_),
     )

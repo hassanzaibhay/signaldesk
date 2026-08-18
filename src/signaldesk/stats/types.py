@@ -228,9 +228,16 @@ class EstimatorPanel:
     #: negative are different answers, and a column of ``False`` would be
     #: counted as "no pair met all four" by anything that consumed it.
     flag_all_four: BoolArray | None
-    #: The gamma mixture prior sat on a bound. Every EBGM and EBGM05 on this
-    #: panel is provisional and must not be quoted as a measurement.
+    #: The gamma mixture prior sat on a bound and that has not been ruled on.
+    #: Every EBGM and EBGM05 on this panel is provisional and must not be quoted
+    #: as a measurement.
     mgps_provisional: bool
     #: ``a`` below the minimum cell count. Computed, reported, but excluded from
     #: headline counts rather than dropped, so the denominator stays visible.
     insufficient: BoolArray
+    #: A boundary fit was accepted on the evidence of a profile likelihood, so
+    #: ``flag_all_four`` exists despite the bound. Recorded separately from
+    #: ``mgps_provisional`` because it is why the scores are reportable, and
+    #: separately from ``hyperparameters.on_boundary``, which is the untouched
+    #: measurement that a parameter was pinned at all.
+    mgps_boundary_adjudicated: bool = False

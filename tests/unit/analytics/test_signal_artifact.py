@@ -343,3 +343,203 @@ def test_a_legacy_flag_count_key_is_renamed_when_the_record_is_read(
     counts = read_record("20260815T141716Z", scoped)["flag_counts"]
 
     assert counts == {"ror_prr_bcpnn": 1_393_815, "bcpnn": 1_393_815}
+
+
+def _write_run_parquet(settings: Settings, run_id: str) -> dict[str, int]:
+    """A scored run carrying the flag columns all_four is completed from.
+
+    Row 3 is insufficient and flagged, so a completion that ignored the minimum
+    cell count would come out one too high.
+    """
+    import polars as pl
+
+    from signaldesk.analytics.signals import signal_root
+
+    frame = pl.DataFrame(
+        {
+            "a": [40, 40, 40, 1],
+            "flag_ror_prr_bcpnn": [True, True, False, True],
+            "flag_mgps": [True, False, True, True],
+            "insufficient": [False, False, False, True],
+        }
+    )
+    partition = signal_root(settings) / f"run={run_id}"
+    partition.mkdir(parents=True, exist_ok=True)
+    frame.write_parquet(partition / "part-0.parquet")
+    return {"headline": 1, "including_insufficient": 2}
+
+
+def _adjudicable(tmp_path: Path, **overrides: object) -> Path:
+    """A diagnostic shaped like the committed one, with the bound winning."""
+    document: dict[str, object] = {
+        "bound_is_optimum": True,
+        "monotone_away_from_bound": True,
+        "nll_at_bound": 16_580_220.1779,
+        "relative_spread": 0.217252,
+        "flagged_minimum": 1_133_093,
+        "flagged_maximum": 1_379_260,
+        "ebgm05_at_bound": {"alpha1": 1e-06, "flagged_ebgm05_gt_2": 1_133_093},
+        "ebgm05_at_grid_argmin": {"alpha1": 1e-05, "flagged_ebgm05_gt_2": 1_133_100},
+        "ebgm05_sensitivity": [
+            {"alpha1": 1e-06, "flagged_ebgm05_gt_2": 1_133_093},
+            {"alpha1": 1e-05, "flagged_ebgm05_gt_2": 1_133_100},
+            {"alpha1": 1.0, "flagged_ebgm05_gt_2": 1_379_260},
+        ],
+        "profile": [
+            {"alpha1": 1e-06, "nll": 16_580_220.1779},
+            {"alpha1": 1e-05, "nll": 16_580_224.5763},
+            {"alpha1": 1.0, "nll": 16_810_479.9780},
+        ],
+    }
+    document.update(overrides)
+    path = tmp_path / "adjudicable.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
+def test_adjudication_needs_the_diagnostic_it_rests_on(tmp_path: Path, settings: Settings) -> None:
+    """A ruling with no measurement behind it is not adjudication."""
+    scoped = settings.model_copy(update={"data_dir": tmp_path / "data"})
+    _write_record(_record("20260815T141716Z", provisional=True), scoped)
+
+    with pytest.raises(ValueError, match="needs the diagnostic"):
+        write_history_artifact(
+            ["20260815T141716Z"], scoped, root=tmp_path / "history", mgps_adjudicated=True
+        )
+
+
+def test_a_defective_fit_cannot_be_adjudicated_reportable(
+    tmp_path: Path, settings: Settings
+) -> None:
+    """Adjudication rules on a sensitivity, not over a contradicting measurement."""
+    scoped = settings.model_copy(update={"data_dir": tmp_path / "data"})
+    _write_record(_record("20260815T141716Z", provisional=True), scoped)
+
+    with pytest.raises(ValueError, match="not the optimum"):
+        write_history_artifact(
+            ["20260815T141716Z"],
+            scoped,
+            root=tmp_path / "history",
+            diagnostics=_adjudicable(tmp_path, bound_is_optimum=False),
+            mgps_adjudicated=True,
+        )
+
+
+def test_adjudication_lifts_the_withholding_without_leaving_stale_text(
+    tmp_path: Path, settings: Settings
+) -> None:
+    scoped = settings.model_copy(update={"data_dir": tmp_path / "data"})
+    _write_record(_record("20260815T141716Z", provisional=True), scoped)
+    _write_run_parquet(scoped, "20260815T141716Z")
+
+    path = write_history_artifact(
+        ["20260815T141716Z"],
+        scoped,
+        root=tmp_path / "history",
+        diagnostics=_adjudicable(tmp_path),
+        mgps_adjudicated=True,
+    )
+    document = json.loads(path.read_text(encoding="utf-8"))
+
+    assert document["quotable"]["withheld"] == []
+    assert document["quotable"]["withheld_reason"] is None
+    assert "mgps" in document["quotable"]["estimators"]
+    # The per-run note is policy text and must not survive the ruling.
+    assert "must not be quoted" not in document["runs"][0]["mgps"]["note"]
+    # The measurement beside it is the run's own record and stays.
+    assert document["runs"][0]["mgps"]["provisional"] is True
+    assert document["runs"][0]["mgps"]["hyperparameters"]["on_boundary"] == ["alpha1"]
+
+
+def test_the_adjudication_records_the_near_bound_figure_it_rests_on(
+    tmp_path: Path, settings: Settings
+) -> None:
+    """The sensitivity figure is bound versus argmin, not the full-profile spread."""
+    scoped = settings.model_copy(update={"data_dir": tmp_path / "data"})
+    _write_record(_record("20260815T141716Z", provisional=True), scoped)
+    _write_run_parquet(scoped, "20260815T141716Z")
+
+    path = write_history_artifact(
+        ["20260815T141716Z"],
+        scoped,
+        root=tmp_path / "history",
+        diagnostics=_adjudicable(tmp_path),
+        mgps_adjudicated=True,
+    )
+    block = json.loads(path.read_text(encoding="utf-8"))["mgps_adjudication"]
+
+    near = block["near_bound_sensitivity"]
+    assert near["bound_flagged"] == 1_133_093
+    assert near["grid_argmin_flagged"] == 1_133_100
+    assert near["flagged_delta"] == 7
+    assert near["flagged_delta_relative_to_bound"] == pytest.approx(7 / 1_133_093)
+
+    context = block["full_profile_context"]
+    assert context["relative_spread_denominator"] == "flagged_minimum"
+    assert context["driven_by"]["alpha1"] == 1.0
+    assert context["driven_by"]["nll_excess_over_bound"] == pytest.approx(230_259.8001, abs=1e-3)
+
+
+def test_without_adjudication_the_withholding_stands(tmp_path: Path, settings: Settings) -> None:
+    """Passing a diagnostic is not itself a ruling."""
+    scoped = settings.model_copy(update={"data_dir": tmp_path / "data"})
+    _write_record(_record("20260815T141716Z", provisional=True), scoped)
+
+    path = write_history_artifact(
+        ["20260815T141716Z"],
+        scoped,
+        root=tmp_path / "history",
+        diagnostics=_adjudicable(tmp_path),
+    )
+    document = json.loads(path.read_text(encoding="utf-8"))
+
+    assert document["quotable"]["withheld"] == ["mgps"]
+    assert document["mgps_adjudication"] is None
+    assert "must not be quoted" in document["runs"][0]["mgps"]["note"]
+
+
+def test_all_four_is_completed_from_the_runs_persisted_columns(
+    tmp_path: Path, settings: Settings
+) -> None:
+    """The run wrote null while MGPS was withheld; the count is exact from disk.
+
+    Recomputed rather than rebuilt, so the run stays immutable and keeps the
+    run_id the diagnostic names. The headline excludes the insufficient row.
+    """
+    scoped = settings.model_copy(update={"data_dir": tmp_path / "data"})
+    _write_record(_record("20260815T141716Z", provisional=True), scoped)
+    expected = _write_run_parquet(scoped, "20260815T141716Z")
+
+    path = write_history_artifact(
+        ["20260815T141716Z"],
+        scoped,
+        root=tmp_path / "history",
+        diagnostics=_adjudicable(tmp_path),
+        mgps_adjudicated=True,
+    )
+    document = json.loads(path.read_text(encoding="utf-8"))
+    counts = document["runs"][0]["flag_counts"]
+
+    assert counts["all_four"] == expected["headline"]
+    assert counts["all_four_including_insufficient"] == expected["including_insufficient"]
+    assert "recomputed from what each run persisted" in document["flag_all_four_note"]
+    assert "20260815T141716Z" in document["flag_all_four_note"]
+
+
+def test_a_run_that_already_has_all_four_is_left_alone(tmp_path: Path, settings: Settings) -> None:
+    """Completion fills a hole; it never overwrites what a run measured."""
+    scoped = settings.model_copy(update={"data_dir": tmp_path / "data"})
+    _write_record(_record("20260815T141716Z", provisional=False), scoped)
+    _write_run_parquet(scoped, "20260815T141716Z")
+
+    path = write_history_artifact(
+        ["20260815T141716Z"],
+        scoped,
+        root=tmp_path / "history",
+        diagnostics=_adjudicable(tmp_path),
+        mgps_adjudicated=True,
+    )
+    document = json.loads(path.read_text(encoding="utf-8"))
+
+    assert document["runs"][0]["flag_counts"]["all_four"] == 1
+    assert "flag_all_four_note" not in document

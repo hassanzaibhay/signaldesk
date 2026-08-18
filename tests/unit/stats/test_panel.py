@@ -113,3 +113,52 @@ def test_an_interior_prior_reports_all_four() -> None:
     assert not panel.mgps_provisional
     assert panel.flag_all_four is not None
     assert panel.flag_all_four.tolist() == (panel.flag_ror_prr_bcpnn & panel.flag_mgps).tolist()
+
+
+def test_an_adjudicated_boundary_prior_reports_all_four() -> None:
+    """A boundary ruled on by a profile likelihood is reportable.
+
+    flag_all_four was null because the prior was an artefact of the feasible
+    region. Once a profile has settled that the bound is the optimum and that the
+    scores do not move across it, the four-method count rests on something.
+    """
+    provisional = MgpsHyperparameters(
+        alpha1=1e-6,
+        beta1=0.38537165,
+        alpha2=2.15410622,
+        beta2=2.03677734,
+        p=0.0720271218954894,
+        neg_log_likelihood=0.0,
+        iterations=0,
+        n_pairs=0,
+        on_boundary=("alpha1",),
+    )
+    panel = estimate_all(_table(), hyperparameters=provisional, mgps_boundary_adjudicated=True)
+
+    assert not panel.mgps_provisional
+    assert panel.mgps_boundary_adjudicated
+    assert panel.flag_all_four is not None
+    assert panel.flag_all_four.tolist() == (panel.flag_ror_prr_bcpnn & panel.flag_mgps).tolist()
+    # The measurement behind the ruling is untouched: a pinned parameter stays
+    # recorded as pinned whatever was decided about reporting it.
+    assert panel.mgps.hyperparameters.on_boundary == ("alpha1",)
+    assert panel.mgps.hyperparameters.provisional
+
+
+def test_an_unadjudicated_boundary_prior_still_withholds_all_four() -> None:
+    provisional = MgpsHyperparameters(
+        alpha1=1e-6,
+        beta1=0.38537165,
+        alpha2=2.15410622,
+        beta2=2.03677734,
+        p=0.0720271218954894,
+        neg_log_likelihood=0.0,
+        iterations=0,
+        n_pairs=0,
+        on_boundary=("alpha1",),
+    )
+    panel = estimate_all(_table(), hyperparameters=provisional)
+
+    assert panel.mgps_provisional
+    assert not panel.mgps_boundary_adjudicated
+    assert panel.flag_all_four is None

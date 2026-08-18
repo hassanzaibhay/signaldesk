@@ -214,6 +214,12 @@ def build_diagnostic(
     flagged = [row["flagged_ebgm05_gt_2"] for row in sensitivity]
     low, high = min(flagged), max(flagged)
 
+    at_bound_row = next(row for row in sensitivity if row["alpha1"] == lower)
+    at_argmin_row = next(row for row in sensitivity if row["alpha1"] == argmin.value)
+    near_bound_delta = abs(
+        at_argmin_row["flagged_ebgm05_gt_2"] - at_bound_row["flagged_ebgm05_gt_2"]
+    )
+
     return {
         "run_id": run_id,
         "parameter": "alpha1",
@@ -238,11 +244,25 @@ def build_diagnostic(
         "sweeps_disagree_at": disagreeing,
         "profile": [_point_as_dict(point) for point in ordered],
         "ebgm05_sensitivity": sensitivity,
-        "ebgm05_at_bound": next(row for row in sensitivity if row["alpha1"] == lower),
-        "ebgm05_at_grid_argmin": next(row for row in sensitivity if row["alpha1"] == argmin.value),
+        "ebgm05_at_bound": at_bound_row,
+        "ebgm05_at_grid_argmin": at_argmin_row,
+        # The sensitivity figure. These are the two points the reading turns on
+        # and the region where the likelihood has support, so this is what says
+        # whether the boundary reading is load-bearing for the reported count.
+        "near_bound_flagged_delta": near_bound_delta,
+        "near_bound_flagged_delta_relative": (
+            near_bound_delta / at_bound_row["flagged_ebgm05_gt_2"]
+            if at_bound_row["flagged_ebgm05_gt_2"]
+            else None
+        ),
         "flagged_minimum": low,
         "flagged_maximum": high,
+        # Spread over every scored point, divided by flagged_minimum. A
+        # full-profile figure, not a sensitivity result: it includes grid points
+        # the likelihood rejects by hundreds of thousands of nats. Read it
+        # against near_bound_flagged_delta, never instead of it.
         "relative_spread": (high - low) / low if low else None,
+        "relative_spread_denominator": "flagged_minimum",
     }
 
 
