@@ -23,7 +23,6 @@ from __future__ import annotations
 import json
 import os
 import platform
-import resource
 import subprocess
 import time
 from collections.abc import Sequence
@@ -37,6 +36,7 @@ import polars as pl
 from signaldesk.analytics.contingency import ContingencySpec, PairTable
 from signaldesk.analytics.contingency import build as build_contingency
 from signaldesk.core.config import Settings, get_settings
+from signaldesk.core.errors import SignalDeskError
 from signaldesk.core.logging import get_logger
 from signaldesk.stats.mgps import fit_hyperparameters
 from signaldesk.stats.panel import estimate_all
@@ -171,7 +171,25 @@ def _peak_rss_bytes() -> int:
 
     ``ru_maxrss`` is kilobytes on Linux and bytes on macOS. The container is
     Linux, and the multiplier is stated rather than guessed at read time.
+
+    ``resource`` is a Unix-only module, so it is imported here rather than at
+    module scope. Hassan develops on Windows and the unit suite runs there; an
+    unconditional top-level import made this module unimportable on that
+    platform, which took every test that touches the signal build down with it.
+    A build still cannot run on Windows - it raises below rather than reporting
+    a peak of zero, because a fabricated measurement in a run record is worse
+    than a refusal - but importing the module no longer depends on the platform.
     """
+    try:
+        import resource
+    except ModuleNotFoundError as error:  # pragma: no cover - Windows only
+        message = (
+            "peak RSS cannot be measured on this platform: the 'resource' module "
+            "is Unix-only. The pipeline runs in the Linux container; use "
+            "'make build-signals' rather than invoking the build on the host."
+        )
+        raise SignalDeskError(message) from error
+
     usage = resource.getrusage(resource.RUSAGE_SELF)
     return int(usage.ru_maxrss) * (1 if platform.system() == "Darwin" else 1024)
 

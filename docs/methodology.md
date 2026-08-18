@@ -449,8 +449,35 @@ output are committed under `tests/fixtures/estimators/`.
 | IC 2.5th percentile | `PhViD::BCPNN` 1.0.8 | 1e-9 |
 | MGPS likelihood, weighted | `openEBGM::negLLsquash` 0.9.1 | 1e-10 |
 | MGPS likelihood, unweighted | `openEBGM::negLL` 0.9.1 | 1e-10 |
-| MGPS hyperparameter fit | `openEBGM::autoHyper` 0.9.1 | 1e-3 |
+| MGPS fit, achieved likelihood | `openEBGM::autoHyper` 0.9.1 | 1e-8 |
+| MGPS fit, hyperparameters | `openEBGM::autoHyper` 0.9.1 | 2.5e-2 |
 | Qn, EBGM, EBGM05 | `openEBGM` 0.9.1 | 1e-6 |
+
+The two MGPS fit rows differ by six orders of magnitude, which needs saying.
+The likelihood is reproduced to 8.5e-11; the hyperparameters are not
+determined anywhere near that well. On the openEBGM CAERS fixture the four
+start points reach optima whose negative log-likelihoods span 9.0e-04 nats
+while their mixture weights span 1.6e-02 in relative terms, and the best two
+differ by **6.6e-09 nats** while their `alpha1` differs in the fourth decimal.
+
+Which of those an optimizer returns is therefore settled below float noise and
+varies with the BLAS build: the same code returns `p = 0.0720182` in the
+project's Linux container and `p = 0.0721349` on the CI runner, consistently
+on each. The fit is reproducible in likelihood and is **not** reproducible in
+its individual parameters across machines.
+
+So the validation asserts the achieved likelihood tightly and the parameters
+at a tolerance the flatness justifies, and a second test pins the flatness
+itself so the tolerance stays measured rather than remembered. Asserting the
+parameters to 1e-3 was asserting precision the estimand does not have.
+
+This has a consequence beyond the test. The corpus prior, and every EBGM and
+EBGM05 shrunk through it, is reproducible only up to the same flatness. The
+reported counts are far less sensitive than that - the boundary diagnostic
+below moves the flagged count by 7 pairs in 1,133,093 across a 4.4-nat range -
+but a run repeated on different hardware should be expected to differ in the
+last digits of its hyperparameters, and `signal_run` records them for exactly
+that reason.
 
 ### The minimum cell count is a flag, not a filter
 

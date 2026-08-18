@@ -20,6 +20,7 @@ from scipy.optimize import minimize
 from signaldesk.core.errors import EstimatorConvergenceError
 from signaldesk.stats.mgps import (
     BOUNDS,
+    START_POINTS,
     ProfilePoint,
     fit_hyperparameters,
     gamma_poisson_shrinker,
@@ -69,6 +70,38 @@ def test_fit_reproduces_the_published_hyperparameters(reference_mgps: dict[str, 
     openEBGM minimises with ``nlminb`` and this project with L-BFGS-B, from a
     different set of starting values, so agreement here is evidence about the
     likelihood surface rather than about one optimizer reproducing another.
+
+    **The likelihood is what is asserted tightly, and the parameters are not.**
+    This surface is close to flat along the mixture weight near its optimum, so
+    the converged parameters are not determined to the precision the likelihood
+    is. Measured on this fixture, the four start points reach:
+
+    ==============  ===========  ==========================================
+    NLL excess      ``p``        deviation from published
+    ==============  ===========  ==========================================
+    0               0.0720182    1.2e-04
+    6.6e-09         0.0720039    2.9e-04
+    2.1e-04         0.0725684    7.7e-03
+    9.0e-04         0.0731768    1.6e-02
+    ==============  ===========  ==========================================
+
+    The best two differ by **6.6e-09 nats** while their ``alpha1`` differs in the
+    fourth decimal, so which one an optimizer returns is settled below float
+    noise and varies with the BLAS build. An earlier revision asserted every
+    parameter at ``rel=1e-3``, passed in the Linux container, and failed on CI at
+    ``p = 0.0721349`` - the same value on every CI run, so a real difference in
+    the optimizer path rather than flakiness.
+
+    Asserting the achieved likelihood to ``rel=1e-8`` is the claim that matters:
+    it says this implementation reaches openEBGM's optimum, and it holds to
+    8.5e-11. The parameter tolerance is set to ``2.5e-2``, which every optimum
+    within 1e-3 nats of the best satisfies. Tightening it back would be asserting
+    precision the estimand does not have.
+
+    That the fit is not reproducible across machines at the parameter level is a
+    property of this estimator worth knowing and is recorded in
+    ``docs/methodology.md``. It is not repaired here by loosening a number until
+    it passes.
     """
     squashed = reference_mgps["squashed"]
     fitted = fit_hyperparameters(
@@ -78,14 +111,62 @@ def test_fit_reproduces_the_published_hyperparameters(reference_mgps: dict[str, 
     )
     published = reference_mgps["theta_hat"]
 
-    assert fitted.alpha1 == pytest.approx(published["alpha1"], rel=1e-3)
-    assert fitted.beta1 == pytest.approx(published["beta1"], rel=1e-3)
-    assert fitted.alpha2 == pytest.approx(published["alpha2"], rel=1e-3)
-    assert fitted.beta2 == pytest.approx(published["beta2"], rel=1e-3)
-    assert fitted.p == pytest.approx(published["p"], rel=1e-3)
+    # The optimum itself, asserted at the precision it is actually determined to.
     assert fitted.neg_log_likelihood == pytest.approx(
         reference_mgps["neg_log_likelihood_squashed"], rel=1e-8
     )
+    # No optimum this implementation reaches may sit above openEBGM's: finding a
+    # worse one would mean the search, not the surface, is the difference.
+    assert fitted.neg_log_likelihood <= reference_mgps["neg_log_likelihood_squashed"] + 1e-6
+
+    flat = 2.5e-2
+    assert fitted.alpha1 == pytest.approx(published["alpha1"], rel=flat)
+    assert fitted.beta1 == pytest.approx(published["beta1"], rel=flat)
+    assert fitted.alpha2 == pytest.approx(published["alpha2"], rel=flat)
+    assert fitted.beta2 == pytest.approx(published["beta2"], rel=flat)
+    assert fitted.p == pytest.approx(published["p"], rel=flat)
+
+
+def test_the_mixture_weight_is_weakly_identified_on_this_fixture(
+    reference_mgps: dict[str, Any],
+) -> None:
+    """Pins why the fit above is asserted on the likelihood and not the parameters.
+
+    If a future change sharpened the surface, this would fail and the tolerance
+    above could be tightened. If it flattened further, this fails too. Either way
+    the reason for that tolerance stays measured rather than remembered.
+    """
+    squashed = reference_mgps["squashed"]
+    count = np.asarray(squashed["N"], dtype=np.float64)
+    expected = np.asarray(squashed["E"], dtype=np.float64)
+    weights = np.asarray(squashed["weight"], dtype=np.float64)
+
+    optima = []
+    for start in START_POINTS:
+        outcome = minimize(
+            lambda v: negative_log_likelihood(
+                (float(v[0]), float(v[1]), float(v[2]), float(v[3]), float(v[4])),
+                count,
+                expected,
+                weights=weights,
+            ),
+            np.asarray(start, dtype=np.float64),
+            method="L-BFGS-B",
+            bounds=BOUNDS,
+        )
+        assert outcome.success
+        optima.append((float(outcome.fun), float(outcome.x[4])))
+
+    best = min(nll for nll, _ in optima)
+    near = [p for nll, p in optima if nll - best <= 1e-3]
+
+    # Several optima are indistinguishable in likelihood.
+    assert len(near) >= 2
+    # Yet their mixture weights differ by far more than the likelihood gap.
+    assert max(near) - min(near) > 1e-3
+    # And every one of them sits inside the tolerance the fit test uses.
+    published = reference_mgps["theta_hat"]["p"]
+    assert all(abs(p - published) / published <= 2.5e-2 for p in near)
 
 
 def test_mixture_fraction_matches_openebgm(reference_mgps: dict[str, Any]) -> None:
