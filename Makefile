@@ -1,18 +1,25 @@
 DC ?= docker compose
 EXEC := $(DC) exec -T web
 
+# The container has no .git - the application does not read the working
+# tree - so the commit is resolved here and passed in, and every run
+# artifact records the code it was produced by.
+CODE_SHA := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+# docker compose exec takes its flags before the service name.
+EXEC_SHA := $(DC) exec -T -e SIGNALDESK_CODE_SHA=$(CODE_SHA) web
+
 .DEFAULT_GOAL := help
 
 .PHONY: help bootstrap up up-dev down restart logs ps shell dbshell \
         migrate makemigrations superuser fmt lint type hygiene test test-fast cov \
         ingest-faers ingest-labels ingest-ctgov ingest-pubmed normalize-drugs \
-        build-signals build-index record-cassettes \
+        build-signals signals-mgps-diagnostic signals-artifact build-index record-cassettes \
         eval-retrieval eval-labeledness eval-briefs eval-signals eval-all \
         demo-data clean reset prune df
 
 help:  ## Show available targets
 	@$(DC) version
-	@python -c "import re,pathlib;[print(f'{m.group(1):<22}{m.group(2)}') for m in re.finditer(r'^([a-z-]+):.*?## (.*)$$', pathlib.Path('Makefile').read_text(), re.M)]"
+	@python -c "import re,pathlib;p=[(m.group(1),m.group(2)) for m in re.finditer(r'^([a-z-]+):.*?## (.*)$$', pathlib.Path('Makefile').read_text(), re.M)];w=max(len(n) for n,_ in p)+2;[print(f'{n:<{w}}{d}') for n,d in p]"
 
 bootstrap:  ## Fresh clone to running app with demo data
 	$(DC) build
@@ -91,7 +98,13 @@ normalize-drugs:  ## Map FAERS drug strings to RxNorm ingredients
 	$(EXEC) signaldesk normalize drugs $(ARGS)
 
 build-signals:  ## Recompute contingency tables and estimators
-	$(EXEC) signaldesk signals build $(ARGS)
+	$(EXEC_SHA) signaldesk signals build $(ARGS)
+
+signals-mgps-diagnostic:  ## Profile the MGPS likelihood in alpha1 for one run
+	$(EXEC_SHA) signaldesk signals mgps-diagnostic $(ARGS)
+
+signals-artifact:  ## Collect signal runs into one artifact under evals/history/
+	$(EXEC_SHA) signaldesk signals artifact $(ARGS)
 
 build-index:  ## Chunk, embed, and build the sparse and dense indexes
 	$(EXEC) signaldesk index build $(ARGS)

@@ -41,18 +41,28 @@ def connect(
     *,
     path: Path | None = None,
     read_only: bool = False,
+    in_memory: bool = False,
 ) -> duckdb.DuckDBPyConnection:
     """Open a DuckDB connection against ``DATA_DIR``.
 
     Pass ``path`` to point somewhere else (tests use a temporary directory).
     The parent directory is created for writable connections; a read-only
     connection to a database that does not exist is an error worth surfacing.
+
+    ``in_memory`` opens a private database instead, for work that reads Parquet
+    and creates only temporary tables. DuckDB takes an exclusive file lock, so a
+    caller that does not need the persistent database should not take one: two
+    such passes cannot otherwise run at once, and a killed one leaves a stale
+    lock that blocks the next until its process is found and killed.
     """
     settings = settings or get_settings()
-    target = path or duckdb_path(settings)
-    if not read_only:
-        target.parent.mkdir(parents=True, exist_ok=True)
-    connection = duckdb.connect(str(target), read_only=read_only)
+    if in_memory:
+        target = Path(":memory:")
+    else:
+        target = path or duckdb_path(settings)
+        if not read_only:
+            target.parent.mkdir(parents=True, exist_ok=True)
+    connection = duckdb.connect(":memory:" if in_memory else str(target), read_only=read_only)
     connection.execute(f"SET memory_limit='{DEFAULT_MEMORY_LIMIT}'")
     connection.execute(f"SET threads={DEFAULT_THREADS}")
 
@@ -76,9 +86,10 @@ def connection(
     *,
     path: Path | None = None,
     read_only: bool = False,
+    in_memory: bool = False,
 ) -> Iterator[duckdb.DuckDBPyConnection]:
     """``connect`` as a context manager, closing the handle on the way out."""
-    handle = connect(settings, path=path, read_only=read_only)
+    handle = connect(settings, path=path, read_only=read_only, in_memory=in_memory)
     try:
         yield handle
     finally:

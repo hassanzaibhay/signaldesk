@@ -388,15 +388,267 @@ def normalize_drugs() -> None:
 
 
 @signals_app.command("build")
-def signals_build() -> None:
-    """Recompute contingency tables and the four estimators over the corpus."""
-    _owned_by("P08", "signal build")
+def signals_build(
+    drug_key: Annotated[
+        str,
+        typer.Option(
+            "--drug-key",
+            help=(
+                "What counts as one drug: 'ingredient' resolves through the RxNorm "
+                "normalization tables, 'raw-string' groups on the published drug name "
+                "without resolving it. Recorded on the run; no number means anything "
+                "without it."
+            ),
+        ),
+    ] = "ingredient",
+    roles: Annotated[
+        str,
+        typer.Option(
+            "--roles",
+            help=(
+                "Reported drug roles in scope: 'ps-ss' for the primary analysis, "
+                "'ps' for the primary-suspect sensitivity analysis."
+            ),
+        ),
+    ] = "ps-ss",
+    min_a: Annotated[
+        int,
+        typer.Option(
+            "--min-a",
+            help=(
+                "Minimum co-reporting cases for a pair to enter the headline counts. "
+                "Pairs below it are still computed and written, marked insufficient."
+            ),
+        ),
+    ] = 3,
+    from_quarter: Annotated[
+        str | None, typer.Option("--from", help="First quarter, for example 2012Q4.")
+    ] = None,
+    to_quarter: Annotated[str | None, typer.Option("--to", help="Last quarter.")] = None,
+    chunk_rows: Annotated[
+        int | None,
+        typer.Option(
+            "--chunk-rows",
+            help=(
+                "Score and write this many pairs at a time instead of all at once. "
+                "Lowers peak memory at a small cost in wall clock, and produces "
+                "identical output. The raw-string corpus peaks near 8.2 GiB, so a "
+                "drug key yielding more pairs needs this."
+            ),
+        ),
+    ] = None,
+    mgps_adjudicated: Annotated[
+        bool,
+        typer.Option(
+            "--mgps-adjudicated",
+            help=(
+                "Treat a boundary MGPS fit as reportable, so flag_all_four is "
+                "computed rather than null. Set only when a profile likelihood "
+                "has settled the boundary; 'signals mgps-diagnostic' produces it."
+            ),
+        ),
+    ] = False,
+) -> None:
+    """Recompute contingency tables and the four estimators over the corpus.
+
+    Writes one immutable run to /data/parquet/signal, plus the parameters, the
+    commit and the data snapshot that produced it. Takes a few minutes on the
+    full corpus; the wall clock and peak memory are measured and reported.
+    """
+    _setup_django()
+
+    from signaldesk.analytics.contingency import ContingencySpec, DrugKey, RoleFilter
+    from signaldesk.analytics.signals import build as build_signals
+
+    try:
+        spec = ContingencySpec(
+            drug_key=DrugKey(drug_key.replace("-", "_")),
+            roles=RoleFilter(roles.replace("-", "_")),
+            min_a=min_a,
+            start_quarter=from_quarter,
+            end_quarter=to_quarter,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    record, path = build_signals(spec, chunk_rows=chunk_rows, mgps_adjudicated=mgps_adjudicated)
+
+    typer.echo(f"run:                 {record.run_id}")
+    typer.echo(f"drug key:            {record.params['drug_key']}")
+    typer.echo(f"roles:               {record.params['role_codes']}")
+    typer.echo(f"deduplicated cases:  {record.n_cases:,}")
+    typer.echo(f"pairs written:       {record.pairs_observed:,}")
+    typer.echo(f"pairs with a >= {min_a}:   {record.pairs_sufficient:,}")
+    typer.echo("flagged, over pairs at or above the minimum cell count:")
+    for name in ("ror", "prr", "bcpnn", "ror_prr_bcpnn"):
+        headline = record.flag_counts[name]
+        raw = record.flag_counts[f"{name}_including_insufficient"]
+        typer.echo(f"  {name:16} {headline:>12,}   (with insufficient pairs: {raw:,})")
+    if record.mgps_provisional:
+        typer.echo(
+            "MGPS:                provisional - the prior converged onto a bound "
+            f"({', '.join(record.hyperparameters['on_boundary'])}). "  # type: ignore[arg-type]
+            "EBGM columns are written but are not measurements."
+        )
+    else:
+        typer.echo(f"MGPS flagged:        {record.flag_counts['mgps']:,}")
+        typer.echo(f"all four:            {record.flag_counts['all_four']:,}")
+    typer.echo(f"seconds:             {record.seconds:,.1f}")
+    typer.echo(f"peak RSS:            {record.peak_rss_bytes / 1024**3:.2f} GiB")
+    typer.echo(f"written to:          {path}")
+
+
+@signals_app.command("artifact")
+def signals_artifact(
+    runs: Annotated[
+        list[str],
+        typer.Option(
+            "--run",
+            help=(
+                "Run identifier to include. Repeat for each run. The primary analysis "
+                "and its sensitivity run belong in one artifact."
+            ),
+        ),
+    ],
+    diagnostics: Annotated[
+        Path | None,
+        typer.Option(
+            "--mgps-diagnostic",
+            help=(
+                "JSON file holding the MGPS boundary diagnostic - the profile "
+                "likelihood and the EBGM05 sensitivity across it - to embed in the "
+                "artifact."
+            ),
+        ),
+    ] = None,
+    mgps_adjudicated: Annotated[
+        bool,
+        typer.Option(
+            "--mgps-adjudicated",
+            help=(
+                "Lift the withholding on a boundary MGPS fit, making EBGM and "
+                "EBGM05 quotable and flag_all_four reportable. Requires "
+                "--mgps-diagnostic, and refuses a diagnostic saying the bound is "
+                "not the optimum. This records a judgement about a measured "
+                "sensitivity; it is never inferred."
+            ),
+        ),
+    ] = False,
+) -> None:
+    """Collect signal runs into one committed artifact under evals/history/."""
+    _setup_django()
+
+    from signaldesk.analytics.signals import write_history_artifact
+
+    try:
+        path = write_history_artifact(
+            runs, diagnostics=diagnostics, mgps_adjudicated=mgps_adjudicated
+        )
+    except ValueError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo(f"written to {path}")
+
+
+@signals_app.command("mgps-diagnostic")
+def signals_mgps_diagnostic(
+    run: Annotated[
+        str,
+        typer.Option("--run", help="Run identifier to profile. Read from its persisted parquet."),
+    ],
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Where to write the diagnostic JSON."),
+    ] = Path("/data/mgps_boundary_diagnostic.json"),
+    grid: Annotated[
+        str | None,
+        typer.Option(
+            "--grid",
+            help=(
+                "Comma-separated alpha1 values to profile, all above the lower "
+                "bound. Defaults to a grid dense near the bound."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Profile the MGPS likelihood in alpha1 and score EBGM05 across the profile.
+
+    Answers whether the gamma mixture's boundary fit is a genuine limit of the
+    data or a failed search, by comparing the likelihood at the bound against the
+    best value anywhere on the grid. Then scores EBGM05 at the bound and at the
+    grid argmin, because if the flagged count moves between them no MGPS number
+    can be quoted whatever the first answer was.
+
+    Reads a completed run rather than rebuilding the contingency table. Refits
+    four parameters at every grid point, twice, so it takes tens of minutes on
+    the full corpus. Writes one JSON file for `signals artifact
+    --mgps-diagnostic` to embed.
+    """
+    _setup_django()
+
+    from signaldesk.analytics.mgps_diagnostic import DEFAULT_GRID, write_diagnostic
+
+    try:
+        values = (
+            tuple(float(piece) for piece in grid.split(",") if piece.strip())
+            if grid
+            else DEFAULT_GRID
+        )
+    except ValueError as error:
+        raise typer.BadParameter(f"--grid must be comma-separated numbers: {error}") from error
+
+    document = write_diagnostic(run, out, grid=values)
+
+    typer.echo(f"run:                 {document['run_id']}")
+    typer.echo(f"pairs:               {document['pairs']:,}")
+    typer.echo(f"sufficient pairs:    {document['sufficient_pairs']:,}")
+    typer.echo(f"NLL at bound:        {document['nll_at_bound']:,.4f}")
+    typer.echo(
+        f"grid argmin:         alpha1={document['grid_argmin']['alpha1']:g} "
+        f"NLL={document['grid_argmin']['nll']:,.4f}"
+    )
+    typer.echo(f"bound minus argmin:  {document['bound_minus_argmin']:,.4f}")
+    typer.echo(f"bound is optimum:    {document['bound_is_optimum']}")
+    typer.echo(f"monotone from bound: {document['monotone_away_from_bound']}")
+    typer.echo(f"sweeps agree:        {document['sweeps_agree_everywhere']}")
+    if document["sweeps_disagree_at"]:
+        disagreed = ", ".join(f"{value:g}" for value in document["sweeps_disagree_at"])
+        typer.echo(f"  sweeps disagree at: {disagreed}")
+    typer.echo(f"EBGM05 flagged at bound:  {document['ebgm05_at_bound']['flagged_ebgm05_gt_2']:,}")
+    typer.echo(
+        f"EBGM05 flagged at argmin: {document['ebgm05_at_grid_argmin']['flagged_ebgm05_gt_2']:,}"
+    )
+    spread = document["relative_spread"]
+    if spread is not None:
+        typer.echo(f"flagged spread:      {spread * 100:.1f} percent across the profile")
+    typer.echo(f"written to:          {out}")
 
 
 @index_app.command("build")
 def index_build() -> None:
     """Chunk documents, embed Tier A, and build the sparse and dense indexes."""
     _owned_by("P10", "index build")
+
+
+def _run_signals_suite() -> None:
+    """Validate the estimators against the published reference standards.
+
+    Refuses, naming every path, until the curated files exist. They are written
+    by hand and are never generated here: a reference standard produced by the
+    system it evaluates measures nothing.
+    """
+    from signaldesk.evals.signals.reference import ReferenceSetError, load_all
+
+    try:
+        _outcome_map, sets = load_all()
+    except ReferenceSetError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=1) from error
+
+    for name, reference in sets.items():
+        typer.echo(
+            f"{name}: {len(reference)} pairs ({reference.positives}+/{reference.negatives}-)"
+        )
 
 
 @evals_app.command("run")
@@ -412,6 +664,10 @@ def evals_run(
     ],
 ) -> None:
     """Run an evaluation suite and append its metrics to the committed history."""
+    if suite == "signals":
+        _setup_django()
+        _run_signals_suite()
+        return
     _owned_by("P09 to P16", f"the {suite} evaluation suite")
 
 

@@ -40,7 +40,6 @@ def test_version_prints_the_package_version() -> None:
         (["ingest", "ctgov"], "P06"),
         (["ingest", "pubmed"], "P07"),
         (["normalize", "drugs"], "P03"),
-        (["signals", "build"], "P08"),
         (["index", "build"], "P10"),
         (["evals", "record-cassettes"], "P11"),
     ],
@@ -50,6 +49,14 @@ def test_unimplemented_stage_names_its_roadmap_prompt(command: list[str], prompt
     assert result.exit_code != 0
     assert isinstance(result.exception, NotImplementedError)
     assert prompt in str(result.exception)
+
+
+def test_implemented_signal_commands_are_listed() -> None:
+    """The signal build is implemented, so it must no longer advertise a prompt."""
+    result = runner.invoke(app, ["signals", "--help"])
+    assert result.exit_code == 0
+    for command in ("build", "artifact"):
+        assert command in result.stdout
 
 
 def test_implemented_ingest_commands_are_listed() -> None:
