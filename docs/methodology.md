@@ -577,12 +577,23 @@ artefact of the box. A caller may accept such a fit explicitly, and the run then
 records which parameters are pinned and marks every EBGM and EBGM05 derived from
 it provisional.
 
-### The MGPS boundary on this corpus, and why EBGM is not reported
+A boundary fit stops being provisional only when a profile likelihood has settled
+it: whether the bound is the optimum, and whether the scores move across the
+profile. That ruling is an explicit input, never inferred from the fit, because a
+fit cannot conclude anything about its own boundary from the inside. What the
+ruling changes is what is reported; which parameters were pinned stays recorded
+either way.
+
+### The MGPS boundary on this corpus, and why EBGM is reported anyway
 
 On the full corpus the fit reaches the lower bound on `alpha1`. That is refused
-by default, so the question had to be settled before any EBGM number could be
-written: is the bound the genuine optimum for this data shape, or a defective
-likelihood?
+by default, so two questions had to be answered before any EBGM number could be
+written. Is the bound the genuine optimum for this data shape, or a defective
+likelihood? And if it is the optimum, do the reported scores depend on where on
+the profile one stands?
+
+Both were answered by measurement, and the answers are below: the bound is the
+optimum, and the scores do not move where the likelihood has support.
 
 Settled by profile likelihood, not by refitting from more start points. `alpha1`
 was fixed on a grid and the remaining four parameters refitted at each point,
@@ -636,9 +647,9 @@ local optimum. Continuation confirms the diagnosis and removes it: the point
 now sits 29,536 nats lower, at 16,603,958.11, and below 0.1 as the shape
 requires. The earlier figure described the search, not the likelihood.
 
-**That does not make EBGM reportable.** The remaining question is whether the
-scores depend on the answer. Rescoring all 8,583,614 pairs at points across the
-profile, over the 2,785,896 pairs at or above the minimum cell count:
+**The remaining question was whether the scores depend on the answer.**
+Rescoring all 8,583,614 pairs at points across the profile, over the 2,785,896
+pairs at or above the minimum cell count:
 
 | `alpha1` | flagged, EBGM05 > 2 | median | 90th pct | 99th pct |
 |---|---|---|---|---|
@@ -650,27 +661,47 @@ profile, over the 2,785,896 pairs at or above the minimum cell count:
 | 1.0 | 1,379,260 | 1.9547 | 41.2583 | 531.6345 |
 | 3.0 | 1,301,053 | 1.6533 | 55.7130 | 501.5227 |
 
-The flagged count spans 1,133,093 to 1,379,260, a 21.7 percent relative spread,
-and the 90th percentile moves more than fivefold. Which `alpha1` is believed
-changes the reported signal count by about 246,000 pairs.
+**They do not.** The bound and the grid argmin - the two points the comparison
+turns on, and the region where the likelihood has support - differ by **7 flagged
+pairs out of 1,133,093**, 6.2 parts per million. That is the sensitivity figure.
 
-Two points on that table are load-bearing and the rest are context: the bound
-and the grid argmin, the pair the comparison above turns on. They differ by
-seven pairs out of 1,133,093. The 21.7 percent spread is driven by `alpha1 = 1`,
-which the likelihood puts 230,260 nats worse than the bound.
+The full-profile spread is 21.7 percent, from 1,133,093 to 1,379,260, computed as
+`(flagged_maximum - flagged_minimum) / flagged_minimum`. It is reported as
+context, not as a sensitivity result: it is driven by `alpha1 = 1`, which the
+likelihood puts **230,259.80 nats** worse than the bound. A spread measured
+across grid points the data excludes does not describe uncertainty in the
+reported count.
 
-So the boundary reading is settled but the reporting decision is not. The
-profile makes `alpha1` at its bound the defensible choice and 1,133,093 the
-defensible count, and the count is stable across the region the likelihood
-finds competitive. Quoting it still rests on accepting the logarithmic limit as
-a prior rather than as a degeneracy, and that is a judgement rather than
-something the likelihood settles. Until it is made: EBGM and EBGM05 are written
-to the signal table and are **not** measurements, `flag_all_four` is null rather
-than false, and `flag_ror_prr_bcpnn` over ROR, PRR and BCPNN is what these runs
-support.
+**So the boundary reading is non-load-bearing.** Whether the logarithmic limit is
+read as a prior or as a degeneracy does not change the count to within seven
+pairs, so that question does not have to be settled for the number to be
+reported. EBGM and EBGM05 are measurements and are quotable, and `flag_all_four`
+is computed:
 
-Every figure above comes from `signaldesk signals mgps-diagnostic`, recorded in
-`evals/history/signals_20260816T113315Z.json`.
+| | PS+SS primary | PS sensitivity |
+|---|---|---|
+| ROR | 1,693,733 | 769,906 |
+| PRR | 1,623,081 | 726,832 |
+| BCPNN | 1,393,815 | 603,100 |
+| MGPS | 1,133,092 | 360,724 |
+| `flag_ror_prr_bcpnn` | 1,393,815 | 603,100 |
+| **`flag_all_four`** | **1,113,770** | **360,303** |
+
+`flag_all_four` is the conservative definition of ARCHITECTURE section 8.2, all
+four thresholds met. It sits below the MGPS count because MGPS flags 19,322 pairs
+(PS+SS) and 421 (PS) that BCPNN does not; BCPNN is otherwise a strict subset of
+both ROR and PRR, which is why `flag_ror_prr_bcpnn` equals the BCPNN count.
+
+The two runs were built while MGPS was withheld and wrote `flag_all_four` as
+null. The counts above are recomputed from what those runs persisted -
+`flag_ror_prr_bcpnn & flag_mgps` per row, headline over pairs at or above the
+minimum - rather than by rebuilding, so each run stays immutable and keeps the
+`run_id` the diagnostic names. Their parquet column is still null; the next build
+writes it natively.
+
+Every figure above comes from `signaldesk signals mgps-diagnostic` and
+`signaldesk signals artifact --mgps-adjudicated`, recorded in
+`evals/history/signals_20260818T051858Z.json`.
 
 ### Reference-set validation
 
