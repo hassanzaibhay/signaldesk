@@ -454,7 +454,8 @@ output are committed under `tests/fixtures/estimators/`.
 | Qn, EBGM, EBGM05 | `openEBGM` 0.9.1 | 1e-6 |
 
 The two MGPS fit rows differ by six orders of magnitude, which needs saying.
-The likelihood is reproduced to 8.5e-11; the hyperparameters are not
+The likelihood is reproduced to 8.5e-11 in the project's container and 2.3e-09
+on the CI runner; the hyperparameters are not
 determined anywhere near that well. On the openEBGM CAERS fixture the four
 start points reach optima whose negative log-likelihoods span 9.0e-04 nats
 while their mixture weights span 1.6e-02 in relative terms, and the best two
@@ -463,8 +464,9 @@ differ by **6.6e-09 nats** while their `alpha1` differs in the fourth decimal.
 Which of those an optimizer returns is therefore settled below float noise and
 varies with the BLAS build: the same code returns `p = 0.0720182` in the
 project's Linux container and `p = 0.0721349` on the CI runner, consistently
-on each. The fit is reproducible in likelihood and is **not** reproducible in
-its individual parameters across machines.
+on each, and the two stop at likelihoods 3.5e-07 below and 9.7e-06 above
+openEBGM's respectively. The fit is reproducible in likelihood and is **not**
+reproducible in its individual parameters across machines.
 
 So the validation asserts the achieved likelihood tightly and the parameters
 at a tolerance the flatness justifies, and a second test pins the flatness
