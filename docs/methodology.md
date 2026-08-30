@@ -487,29 +487,56 @@ output are committed under `tests/fixtures/estimators/`.
 | IC 2.5th percentile | `PhViD::BCPNN` 1.0.8 | 1e-9 |
 | MGPS likelihood, weighted | `openEBGM::negLLsquash` 0.9.1 | 1e-10 |
 | MGPS likelihood, unweighted | `openEBGM::negLL` 0.9.1 | 1e-10 |
-| MGPS fit, achieved likelihood | `openEBGM::autoHyper` 0.9.1 | 1e-8 |
+| MGPS fit, achieved likelihood | `openEBGM::autoHyper` 0.9.1 | 1e-6 |
 | MGPS fit, hyperparameters | `openEBGM::autoHyper` 0.9.1 | 2.5e-2 |
+| MGPS fit, EBGM05 flag count | `openEBGM` 0.9.1 | exact |
 | Qn, EBGM, EBGM05 | `openEBGM` 0.9.1 | 1e-6 |
 
-The two MGPS fit rows differ by six orders of magnitude, which needs saying.
-The likelihood is reproduced to 8.5e-11 in the project's container and 2.3e-09
-on the CI runner; the hyperparameters are not
-determined anywhere near that well. On the openEBGM CAERS fixture the four
-start points reach optima whose negative log-likelihoods span 9.0e-04 nats
-while their mixture weights span 1.6e-02 in relative terms, and the best two
-differ by **6.6e-09 nats** while their `alpha1` differs in the fourth decimal.
+The three MGPS fit rows differ by orders of magnitude, which needs saying. The
+hyperparameters are not determined anywhere near as well as the likelihood is,
+and the count that gets published is not determined by either - it is exact. On
+the openEBGM CAERS fixture the four start points reach optima whose negative
+log-likelihoods span 9.0e-04 nats while their mixture weights span 1.6e-02 in
+relative terms, and the best two differ by **6.6e-09 nats** while their `alpha1`
+differs in the fourth decimal.
 
-Which of those an optimizer returns is therefore settled below float noise and
-varies with the BLAS build: the same code returns `p = 0.0720182` in the
-project's Linux container and `p = 0.0721349` on the CI runner, consistently
-on each, and the two stop at likelihoods 3.5e-07 below and 9.7e-06 above
-openEBGM's respectively. The fit is reproducible in likelihood and is **not**
-reproducible in its individual parameters across machines.
+Which of those an optimizer returns is settled below float noise and varies with
+the BLAS build. Four achieved likelihoods have been observed against openEBGM's
+`4163.971199068148`:
 
-So the validation asserts the achieved likelihood tightly and the parameters
-at a tolerance the flatness justifies, and a second test pins the flatness
-itself so the tolerance stays measured rather than remembered. Asserting the
-parameters to 1e-3 was asserting precision the estimand does not have.
+| Where | Achieved | Relative |
+|---|---|---|
+| project container | 4163.97119942 | 8.45e-11 |
+| CI runner, earlier | 4163.97120872 | 2.32e-09 |
+| CI runner and the development machine | 4163.971252590949 | 1.285e-08 |
+| worst of the four start points | 4163.971357877344 | 3.814e-08 |
+
+The variation is not even consistent per machine. The `windows-latest` runner
+produced the second and third rows on different runs of the same commit range,
+with the same numpy and scipy versions - one failure in four runs. So the
+likelihood row is asserted at **1e-6**, which clears the worst observed fit by
+78x. An earlier `1e-8` sat between the second and third rows and turned thread
+scheduling inside the BLAS into an intermittently red build.
+
+Loosening a tolerance is only defensible if the published quantity does not
+move, so that is asserted directly and exactly. Across all four optima and
+openEBGM's own theta, the EBGM05 flag count on the 300-pair sample is the same
+4 pairs. Not by coincidence: the pair closest to the `EBGM05 > 2` threshold sits
+far further from it than the optima move any pair.
+
+| Where | Margin | Largest shift | Ratio |
+|---|---|---|---|
+| development machine | 0.127605 | 2.92e-03 | 44x |
+| CI, windows-latest | 0.127595 | 4.08e-03 | 31.3x |
+
+The spread between optima is itself BLAS-dependent, so the test asserts a floor
+of 10x - deliberately far from both machines' figures rather than derived from
+either. It asserts the margin as well as the count, so a future change that
+moved a pair near the boundary fails there rather than becoming
+machine-dependent output.
+
+The fit is reproducible in likelihood, reproducible in what it reports, and
+**not** reproducible in its individual parameters across machines.
 
 This has a consequence beyond the test. The corpus prior, and every EBGM and
 EBGM05 shrunk through it, is reproducible only up to the same flatness. The
