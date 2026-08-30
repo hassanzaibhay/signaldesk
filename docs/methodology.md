@@ -522,10 +522,18 @@ Loosening a tolerance is only defensible if the published quantity does not
 move, so that is asserted directly and exactly. Across all four optima and
 openEBGM's own theta, the EBGM05 flag count on the 300-pair sample is the same
 4 pairs. Not by coincidence: the pair closest to the `EBGM05 > 2` threshold sits
-**0.1276** from it while the largest shift in any pair's EBGM05 between optima is
-**2.92e-03**, a 44x margin. The test asserts the margin as well as the count, so
-a future change that moved a pair near the boundary fails there rather than
-becoming machine-dependent output.
+far further from it than the optima move any pair.
+
+| Where | Margin | Largest shift | Ratio |
+|---|---|---|---|
+| development machine | 0.127605 | 2.92e-03 | 44x |
+| CI, windows-latest | 0.127595 | 4.08e-03 | 31.3x |
+
+The spread between optima is itself BLAS-dependent, so the test asserts a floor
+of 10x - deliberately far from both machines' figures rather than derived from
+either. It asserts the margin as well as the count, so a future change that
+moved a pair near the boundary fails there rather than becoming
+machine-dependent output.
 
 The fit is reproducible in likelihood, reproducible in what it reports, and
 **not** reproducible in its individual parameters across machines.

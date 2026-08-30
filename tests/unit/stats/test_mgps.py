@@ -266,19 +266,32 @@ def test_the_ebgm05_flag_count_is_stable_across_the_optima(
     would just be hiding it.
 
     Measured on the openEBGM CAERS sample, 300 pairs, at all four optima and at
-    openEBGM's own published theta:
+    openEBGM's own published theta, every one of them flags the same 4 pairs at
+    ``EBGM05 > 2``. The count is identical on both machines that have run it.
 
-    * every one of them flags the same 4 pairs at ``EBGM05 > 2``;
-    * the pair closest to the threshold sits **0.1276** away from it;
-    * the largest shift in any pair's EBGM05 between optima is **2.92e-03**.
+    It is not stable by coincidence of rounding. The pair closest to the
+    threshold sits far further from it than the optima move any pair:
 
-    A **44x** margin between the two. So the count is not stable by coincidence
-    of rounding - it would take a shift forty times larger than anything these
-    optima produce to move a single pair across the line.
+    ====================  ==========  ===============  ======
+    where                 margin      largest shift    ratio
+    ====================  ==========  ===============  ======
+    development machine   0.127605    2.92e-03         44x
+    CI, windows-latest    0.127595    4.08e-03         31.3x
+    ====================  ==========  ===============  ======
 
-    The margin is asserted, not just the count. If a future change moved a pair
-    near the boundary, this fails first and says why, rather than the count
-    quietly becoming something that varies by machine.
+    **The floor asserted below is 10x, and it is deliberately far from both.**
+    The first revision of this test asserted 40x, which was this machine's 44x
+    rounded down - and it failed on CI at 31.3x, because the spread between
+    optima is itself BLAS-dependent and the runner reaches a slightly wider set.
+    Calibrating a threshold against one machine is the mistake
+    ``test_the_mixture_weight_is_weakly_identified_on_this_fixture`` exists to
+    document, and it was made here while fixing it.
+
+    10x still carries the claim that matters: it would take an order of
+    magnitude more movement than any optimum produces to push a single pair
+    across the line. The margin is asserted rather than only the count, so a
+    future change that moved a pair near the boundary fails here and explains
+    itself, instead of the reported output quietly becoming machine-dependent.
     """
     sample = reference_mgps["sample"]
     count = np.asarray(sample["N"], dtype=np.float64)
@@ -298,9 +311,11 @@ def test_the_ebgm05_flag_count_is_stable_across_the_optima(
 
     # How close any pair gets to the threshold, against how far the optima move
     # a pair. The first must dominate the second or the count above is luck.
+    # The floor is far below both observed ratios; see the table in the
+    # docstring for why it is not either machine's own figure.
     margin = min(float(np.min(np.abs(values - EBGM05_THRESHOLD))) for values in scored)
     shift = max(float(np.max(np.abs(values - scored[0]))) for values in scored[1:])
-    assert margin > 40 * shift, f"margin {margin:.6f} is only {margin / shift:.1f}x the shift"
+    assert margin > 10 * shift, f"margin {margin:.6f} is only {margin / shift:.1f}x the shift"
 
 
 def test_the_flag_threshold_these_counts_assume_is_the_locked_one() -> None:
