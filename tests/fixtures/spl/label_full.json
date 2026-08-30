@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "disclaimer": "Do not rely on openFDA to make decisions regarding medical care.",
+    "results": { "skip": 0, "limit": 100, "total": 1 }
+  },
+  "results": [
+    {
+      "set_id": "6a1b2c3d-0000-4a11-9f00-000000000001",
+      "id": "aaaa1111-bbbb-2222-cccc-333333333333",
+      "version": "7",
+      "effective_time": "20240118",
+      "boxed_warning": [
+        "WARNING: RISK OF SERIOUS INFECTION",
+        "Patients treated with this product are at increased risk for developing serious infections."
+      ],
+      "warnings_and_cautions": [
+        "5.1 Serious Infections Discontinue if a patient develops a serious infection.",
+        "5.2 Malignancies Lymphoma and other malignancies have been reported."
+      ],
+      "adverse_reactions": [
+        "6 ADVERSE REACTIONS The most common adverse reactions were upper respiratory tract infection, nasopharyngitis and headache.",
+        "6.2 Postmarketing Experience Hepatic failure, pancytopenia and interstitial lung disease have been identified during postapproval use."
+      ],
+      "openfda": {
+        "brand_name": ["EXAMPLAMAB"],
+        "generic_name": ["EXAMPLAMAB"],
+        "substance_name": ["EXAMPLAMAB"],
+        "rxcui": ["1234567", "1234568"],
+        "product_type": ["HUMAN PRESCRIPTION DRUG LABEL"]
+      }
+    }
+  ]
+}

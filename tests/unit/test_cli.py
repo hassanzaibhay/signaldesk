@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import typer.main
+from typer.core import TyperGroup
 from typer.testing import CliRunner
 
 from signaldesk import __version__
@@ -36,7 +38,6 @@ def test_version_prints_the_package_version() -> None:
 @pytest.mark.parametrize(
     ("command", "prompt"),
     [
-        (["ingest", "labels"], "P05"),
         (["ingest", "ctgov"], "P06"),
         (["ingest", "pubmed"], "P07"),
         (["normalize", "drugs"], "P03"),
@@ -60,11 +61,28 @@ def test_implemented_signal_commands_are_listed() -> None:
 
 
 def test_implemented_ingest_commands_are_listed() -> None:
-    """FAERS ingest is implemented, so it must no longer advertise a prompt."""
+    """FAERS and SPL ingest are implemented, so they no longer advertise a prompt."""
     result = runner.invoke(app, ["ingest", "--help"])
     assert result.exit_code == 0
-    for command in ("faers", "faers-dedup", "faers-status", "faers-quality"):
+    for command in ("faers", "faers-dedup", "faers-status", "faers-quality", "labels"):
         assert command in result.stdout
+
+
+def test_label_ingest_takes_a_scope_cap() -> None:
+    """The first run is capped and measured rather than fetching every flagged
+    string, so the cap has to be reachable from the command line.
+
+    Read off the registered parameters rather than the rendered help. Typer
+    renders help through Rich, which wraps to the terminal width and emits ANSI
+    escapes, so a substring assertion against that text passes on a wide
+    terminal and fails on a narrow one.
+    """
+    group = typer.main.get_command(app)
+    assert isinstance(group, TyperGroup)
+    ingest = group.commands["ingest"]
+    assert isinstance(ingest, TyperGroup)
+    options = {opt for param in ingest.commands["labels"].params for opt in param.opts}
+    assert {"--top-k", "--run-id", "--force"} <= options
 
 
 def test_evals_run_reports_the_suite_it_cannot_run_yet() -> None:

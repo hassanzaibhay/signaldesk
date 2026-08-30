@@ -364,9 +364,34 @@ def ingest_faers_quality(
 
 
 @ingest_app.command("labels")
-def ingest_labels() -> None:
+def ingest_labels(
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run-id", help="Signal run to scope from. Defaults to the newest."),
+    ] = None,
+    top_k: Annotated[
+        int,
+        typer.Option("--top-k", help="Drug strings to fetch, by descending flagged pairs."),
+    ] = 200,
+    force: Annotated[
+        bool, typer.Option("--force", help="Re-fetch strings already recorded as complete.")
+    ] = False,
+) -> None:
     """Download openFDA prescription drug labels and split them into sections."""
-    _owned_by("P05", "SPL label ingest")
+    _setup_django()
+    from signaldesk.ingest.spl import pipeline
+
+    result = pipeline.run(run_id=run_id, top_k=top_k, force=force)
+    path = pipeline.write_artifact(result)
+    attempted = result.attempted
+    hits = sum(1 for item in attempted if item.hit)
+    typer.echo(f"flagged drug strings (N): {result.n_total:,}")
+    typer.echo(f"selected: {len(result.units):,} (top_k={result.top_k})")
+    typer.echo(
+        f"resolved to at least one label: {hits:,} of {len(attempted):,} attempted"
+        + (f" ({hits / len(attempted):.1%})" if attempted else "")
+    )
+    typer.echo(f"artifact written to {path}")
 
 
 @ingest_app.command("ctgov")

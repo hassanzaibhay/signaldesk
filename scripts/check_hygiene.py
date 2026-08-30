@@ -49,6 +49,14 @@ TRAILER_PATTERN = re.compile(rb"^[ \t>#/*-]*co[-_ ]?authored?[-_ ]?by[ \t]*:", r
 
 MAX_REPORTED_PER_FILE = 10
 
+#: The interpreter this gate is defined against. Everything here is stdlib, so
+#: the checks run happily on a Python the project does not support and report
+#: success for a gate that never ran under the pinned interpreter. The version
+#: is asserted rather than assumed, because a gate that cannot fail is not a
+#: gate.
+REQUIRED_PYTHON: tuple[int, int] = (3, 12)
+REQUIRED_IMPLEMENTATION = "cpython"
+
 
 class Violation:
     """A single rule breach, with enough location detail to fix it directly."""
@@ -61,6 +69,24 @@ class Violation:
 
     def render(self) -> str:
         return f"{self.path}:{self.line}:{self.column}: {self.detail}"
+
+
+def check_interpreter(
+    version: tuple[int, int] | None = None,
+    implementation: str | None = None,
+) -> str | None:
+    """Return why the running interpreter is unacceptable, or None if it is fine.
+
+    Arguments default to the live interpreter and exist so the rejection paths
+    are testable without spawning a subprocess for each one.
+    """
+    version = sys.version_info[:2] if version is None else version
+    implementation = sys.implementation.name if implementation is None else implementation
+    if version == REQUIRED_PYTHON and implementation == REQUIRED_IMPLEMENTATION:
+        return None
+    required = f"{REQUIRED_IMPLEMENTATION} {REQUIRED_PYTHON[0]}.{REQUIRED_PYTHON[1]}"
+    found = f"{implementation} {version[0]}.{version[1]}"
+    return f"hygiene: requires {required}, found {found}"
 
 
 def run_git(args: Sequence[str]) -> str:
@@ -174,6 +200,10 @@ def normalize(root: Path, argument: str) -> str:
 
 
 def main(argv: Sequence[str]) -> int:
+    problem = check_interpreter()
+    if problem is not None:
+        sys.stdout.write(f"{problem}\n")
+        return 2
     root = repo_root()
     names = [normalize(root, argument) for argument in argv] if argv else tracked_files()
     violations = check_files(root, names)
