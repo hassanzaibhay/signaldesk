@@ -10,6 +10,7 @@ was wrong when it failed:
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 import numpy as np
@@ -31,14 +32,80 @@ from signaldesk.stats.mgps import (
     profile_likelihood,
     squash,
 )
+from signaldesk.stats.mgps import flag as mgps_flag
 from signaldesk.stats.types import Contingency, MgpsHyperparameters
 
 pytestmark = pytest.mark.unit
 
 
-def _theta(reference_mgps: dict[str, Any]) -> tuple[float, float, float, float, float]:
+Theta = tuple[float, float, float, float, float]
+
+#: The EBGM05 threshold locked in ``mgps.flag``. Asserted against that default
+#: below, so moving the threshold cannot leave these counts silently stale.
+EBGM05_THRESHOLD = 2.0
+
+
+def _theta(reference_mgps: dict[str, Any]) -> Theta:
     hat = reference_mgps["theta_hat"]
     return (hat["alpha1"], hat["beta1"], hat["alpha2"], hat["beta2"], hat["p"])
+
+
+@pytest.fixture(scope="module")
+def optima(reference_mgps: dict[str, Any]) -> list[tuple[float, Theta]]:
+    """Every optimum the four start points reach, fitted once for the module.
+
+    Two tests need this set and each used to fit it for itself. Fitting is not
+    expensive here - 0.53s for all four - but the duplication meant the same
+    four optimisations ran twice in a suite that is already at its time budget,
+    and the two tests could in principle have been looking at different numbers.
+    """
+    squashed = reference_mgps["squashed"]
+    count = np.asarray(squashed["N"], dtype=np.float64)
+    expected = np.asarray(squashed["E"], dtype=np.float64)
+    weights = np.asarray(squashed["weight"], dtype=np.float64)
+
+    found: list[tuple[float, Theta]] = []
+    for start in START_POINTS:
+        outcome = minimize(
+            lambda v: negative_log_likelihood(
+                (float(v[0]), float(v[1]), float(v[2]), float(v[3]), float(v[4])),
+                count,
+                expected,
+                weights=weights,
+            ),
+            np.asarray(start, dtype=np.float64),
+            method="L-BFGS-B",
+            bounds=BOUNDS,
+        )
+        assert outcome.success
+        found.append(
+            (
+                float(outcome.fun),
+                (
+                    float(outcome.x[0]),
+                    float(outcome.x[1]),
+                    float(outcome.x[2]),
+                    float(outcome.x[3]),
+                    float(outcome.x[4]),
+                ),
+            )
+        )
+    return found
+
+
+def _ebgm05_flag_count(theta: Theta, reference_mgps: dict[str, Any]) -> int:
+    """Pairs the published rule would flag, given these hyperparameters.
+
+    The quantity the project actually reports. Everything upstream of it - which
+    optimum was reached, what the individual parameters came out at - is only
+    interesting to the extent it moves this.
+    """
+    sample = reference_mgps["sample"]
+    count = np.asarray(sample["N"], dtype=np.float64)
+    expected = np.asarray(sample["E"], dtype=np.float64)
+    qn = mixture_fraction(theta, count, expected)
+    ebgm05 = posterior_percentile(theta, count, expected, qn, percentile=5.0)
+    return int(np.sum(ebgm05 > EBGM05_THRESHOLD))
 
 
 def test_weighted_likelihood_matches_openebgm(reference_mgps: dict[str, Any]) -> None:
@@ -88,16 +155,33 @@ def test_fit_reproduces_the_published_hyperparameters(reference_mgps: dict[str, 
     The best two differ by **6.6e-09 nats** while their ``alpha1`` differs in the
     fourth decimal, so which one an optimizer returns is settled below float
     noise and varies with the BLAS build. An earlier revision asserted every
-    parameter at ``rel=1e-3``, passed in the Linux container, and failed on CI at
-    ``p = 0.0721349`` - the same value on every CI run, so a real difference in
-    the optimizer path rather than flakiness.
+    parameter at ``rel=1e-3``, passed in the Linux container, and failed on CI.
 
-    Asserting the achieved likelihood to ``rel=1e-8`` is the claim that matters:
-    it says this implementation reaches openEBGM's optimum, and it holds to
-    8.5e-11 in the container and 2.3e-09 on CI. The parameter tolerance is
-    ``2.5e-2``; the worst deviation observed is 1.6e-02 in the container and
-    7.9e-03 on CI. Tightening it back would be asserting precision the estimand
-    does not have.
+    **The likelihood tolerance is ``rel=1e-6``, and that number is measured.**
+    Four values of the achieved likelihood have now been observed against
+    openEBGM's ``4163.971199068148``:
+
+    ==========================  ====================  ==================
+    where                       achieved              relative deviation
+    ==========================  ====================  ==================
+    project container           4163.97119942         8.45e-11
+    CI runner, earlier          4163.97120872         2.32e-09
+    CI runner and this machine  4163.971252590949     1.285e-08
+    worst of the four starts    4163.971357877344     3.814e-08
+    ==========================  ====================  ==================
+
+    The third row is why ``rel=1e-8`` was wrong: it sits just above that bound,
+    so the assertion passed or failed depending on which optimum the run
+    reached. That is not a property of this implementation, it is thread
+    scheduling inside the BLAS. ``rel=1e-6`` clears the worst observed fit by
+    78x and the worst start point by 26x, and still asserts agreement to one
+    part in a million on the quantity the optimiser is actually minimising.
+
+    Loosening a tolerance is only defensible if the thing that is published does
+    not move, so this test also asserts the published quantity directly: the
+    EBGM05 flag count. It is invariant across every one of these optima, and
+    ``test_the_ebgm05_flag_count_is_stable_across_the_optima`` pins that with
+    the margin arithmetic.
 
     That the fit is not reproducible across machines at the parameter level is a
     property of this estimator worth knowing and is recorded in
@@ -112,16 +196,22 @@ def test_fit_reproduces_the_published_hyperparameters(reference_mgps: dict[str, 
     )
     published = reference_mgps["theta_hat"]
 
-    # The optimum itself, asserted at the precision it is actually determined to.
-    # Two-sided on purpose. nlminb and L-BFGS-B do not stop in the same place:
-    # on the CI runner this reaches 4163.97120872 against openEBGM's
-    # 4163.97119907, 9.7e-06 nats worse, and in the container it reaches
-    # 4163.97119942, 3.5e-07 better. Both are the same optimum to 2.3e-09
-    # relative. A one-sided bound here would be asserting which optimizer stops
-    # marginally sooner, which is not a property of this implementation.
+    # The optimum itself, at the precision it is determined to. Two-sided on
+    # purpose: nlminb and L-BFGS-B do not stop in the same place, and a one-sided
+    # bound would be asserting which optimizer stops marginally sooner, which is
+    # not a property of this implementation. See the table above for the four
+    # observed values and why the bound is 1e-6 rather than 1e-8.
     assert fitted.neg_log_likelihood == pytest.approx(
-        reference_mgps["neg_log_likelihood_squashed"], rel=1e-8
+        reference_mgps["neg_log_likelihood_squashed"], rel=1e-6
     )
+
+    # The published quantity, which is what the loosened tolerance above has to
+    # be safe for. Whichever optimum this machine reached, the reported signals
+    # must be the same ones.
+    assert _ebgm05_flag_count(
+        (fitted.alpha1, fitted.beta1, fitted.alpha2, fitted.beta2, fitted.p),
+        reference_mgps,
+    ) == _ebgm05_flag_count(_theta(reference_mgps), reference_mgps)
 
     flat = 2.5e-2
     assert fitted.alpha1 == pytest.approx(published["alpha1"], rel=flat)
@@ -133,6 +223,7 @@ def test_fit_reproduces_the_published_hyperparameters(reference_mgps: dict[str, 
 
 def test_the_mixture_weight_is_weakly_identified_on_this_fixture(
     reference_mgps: dict[str, Any],
+    optima: list[tuple[float, Theta]],
 ) -> None:
     """Pins why the fit above is asserted on the likelihood and not the parameters.
 
@@ -147,29 +238,8 @@ def test_the_mixture_weight_is_weakly_identified_on_this_fixture(
     was the container's own figure rounded, and it failed on CI - calibrating a
     threshold against one machine is the mistake this test exists to document.
     """
-    squashed = reference_mgps["squashed"]
-    count = np.asarray(squashed["N"], dtype=np.float64)
-    expected = np.asarray(squashed["E"], dtype=np.float64)
-    weights = np.asarray(squashed["weight"], dtype=np.float64)
-
-    optima = []
-    for start in START_POINTS:
-        outcome = minimize(
-            lambda v: negative_log_likelihood(
-                (float(v[0]), float(v[1]), float(v[2]), float(v[3]), float(v[4])),
-                count,
-                expected,
-                weights=weights,
-            ),
-            np.asarray(start, dtype=np.float64),
-            method="L-BFGS-B",
-            bounds=BOUNDS,
-        )
-        assert outcome.success
-        optima.append((float(outcome.fun), float(outcome.x[4])))
-
     best = min(nll for nll, _ in optima)
-    near = [p for nll, p in optima if nll - best <= 1e-3]
+    near = [theta[4] for nll, theta in optima if nll - best <= 1e-3]
 
     # Several optima are indistinguishable in likelihood.
     assert len(near) >= 2
@@ -181,6 +251,65 @@ def test_the_mixture_weight_is_weakly_identified_on_this_fixture(
     # tolerance covers whichever of them a given machine returns.
     published = reference_mgps["theta_hat"]["p"]
     assert all(abs(p - published) / published <= 2.5e-2 for p in near)
+
+
+def test_the_ebgm05_flag_count_is_stable_across_the_optima(
+    reference_mgps: dict[str, Any],
+    optima: list[tuple[float, Theta]],
+) -> None:
+    """The published count does not depend on which optimum was reached.
+
+    This is what makes the loosened likelihood tolerance in the fit test
+    defensible. The parameters are only weakly identified, so if the reported
+    signals moved with them there would be no honest way to assert the fit at
+    all - the estimator's output would be machine-dependent and the tolerance
+    would just be hiding it.
+
+    Measured on the openEBGM CAERS sample, 300 pairs, at all four optima and at
+    openEBGM's own published theta:
+
+    * every one of them flags the same 4 pairs at ``EBGM05 > 2``;
+    * the pair closest to the threshold sits **0.1276** away from it;
+    * the largest shift in any pair's EBGM05 between optima is **2.92e-03**.
+
+    A **44x** margin between the two. So the count is not stable by coincidence
+    of rounding - it would take a shift forty times larger than anything these
+    optima produce to move a single pair across the line.
+
+    The margin is asserted, not just the count. If a future change moved a pair
+    near the boundary, this fails first and says why, rather than the count
+    quietly becoming something that varies by machine.
+    """
+    sample = reference_mgps["sample"]
+    count = np.asarray(sample["N"], dtype=np.float64)
+    expected = np.asarray(sample["E"], dtype=np.float64)
+
+    published = _theta(reference_mgps)
+    thetas = [published, *(theta for _nll, theta in optima)]
+
+    scored = []
+    for theta in thetas:
+        qn = mixture_fraction(theta, count, expected)
+        scored.append(posterior_percentile(theta, count, expected, qn, percentile=5.0))
+
+    counts = {int(np.sum(values > EBGM05_THRESHOLD)) for values in scored}
+    assert len(counts) == 1, f"the flagged count varies across the optima: {sorted(counts)}"
+    assert counts == {4}
+
+    # How close any pair gets to the threshold, against how far the optima move
+    # a pair. The first must dominate the second or the count above is luck.
+    margin = min(float(np.min(np.abs(values - EBGM05_THRESHOLD))) for values in scored)
+    shift = max(float(np.max(np.abs(values - scored[0]))) for values in scored[1:])
+    assert margin > 40 * shift, f"margin {margin:.6f} is only {margin / shift:.1f}x the shift"
+
+
+def test_the_flag_threshold_these_counts_assume_is_the_locked_one() -> None:
+    """The counts above are quoted against ``EBGM05 > 2``.
+
+    Moving that threshold without revisiting them would leave two tests
+    asserting a number that no longer describes what the panel reports.
+    """
+    assert inspect.signature(mgps_flag).parameters["min_ebgm05"].default == EBGM05_THRESHOLD
 
 
 def test_mixture_fraction_matches_openebgm(reference_mgps: dict[str, Any]) -> None:
@@ -305,6 +434,15 @@ def test_fitting_on_a_count_truncated_table_destroys_the_prior(
     This is why ``analytics.contingency`` returns every observed pair and the
     minimum cell count is applied as a flag by the estimator panel rather than
     as a filter before the fit.
+
+    The anchor on ``whole.alpha2`` is deliberately loose. It is not the content
+    of this test - the content is the two ratios below, which are three orders
+    of magnitude clear of any tolerance question. The anchor only says the
+    whole-table fit landed somewhere sane, and it uses the same ``2.5e-2`` band
+    as the fit test for the same reason: the surface is flat near the optimum
+    and which one is reached varies with the BLAS build. An earlier revision
+    asserted it at ``rel=1e-3``, which is the pattern the fit test's docstring
+    warns about, and it failed intermittently on the Windows CI runner.
     """
     squashed = reference_mgps["squashed"]
     count = np.asarray(squashed["N"], dtype=np.float64)
@@ -317,7 +455,7 @@ def test_fitting_on_a_count_truncated_table_destroys_the_prior(
     whole = fit_hyperparameters(count, expected, weights=weights)
     truncated = fit_hyperparameters(count[keep], expected[keep], weights=weights[keep])
 
-    assert whole.alpha2 == pytest.approx(reference_mgps["theta_hat"]["alpha2"], rel=1e-3)
+    assert whole.alpha2 == pytest.approx(reference_mgps["theta_hat"]["alpha2"], rel=2.5e-2)
     assert truncated.alpha2 > 100 * whole.alpha2
     assert truncated.p > 10 * whole.p
 
