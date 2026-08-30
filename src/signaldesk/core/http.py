@@ -66,6 +66,7 @@ def build_client(
     *,
     base_url: str = "",
     timeout: httpx.Timeout | None = None,
+    transport: httpx.BaseTransport | None = None,
 ) -> httpx.Client:
     """Create the shared client. Callers own closing it, or use ``request``.
 
@@ -74,6 +75,12 @@ def build_client(
     one is not the same as a caller hitting a REST API. The override exists so
     that such a caller stays on this factory rather than building its own client
     without the retry, cache and user-agent policy attached.
+
+    ``transport`` substitutes the layer that actually moves bytes. It exists for
+    replaying recorded responses: the model layer serves cassettes through a
+    transport so that the provider's own request building and response parsing
+    run unchanged, which is the half of that code a higher-level stub would
+    skip. Nothing in production passes it.
     """
     settings = settings or get_settings()
     timeout = timeout or httpx.Timeout(
@@ -86,6 +93,7 @@ def build_client(
         base_url=base_url,
         timeout=timeout,
         follow_redirects=True,
+        transport=transport,
         headers={"User-Agent": settings.http_user_agent},
         limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
     )
@@ -232,6 +240,7 @@ def request(
     client: httpx.Client | None = None,
     params: Mapping[str, str] | None = None,
     headers: Mapping[str, str] | None = None,
+    body: object | None = None,
     settings: Settings | None = None,
     use_cache: bool = True,
     sleep: Callable[[float], None] | None = None,
@@ -241,6 +250,12 @@ def request(
     Returns the response even when the final attempt failed with a retryable
     status: deciding what a 503 means belongs to the caller, which knows what it
     asked for. Transport failures propagate once the attempts are exhausted.
+
+    ``body`` is serialised as JSON. It exists because the model providers are
+    POST APIs and without it there is no way to reach one through this client at
+    all, which would mean a second HTTP path with none of the retry policy
+    attached. It is never cached: the cache is GET-only, so a request carrying a
+    body cannot collide with a cache key that does not include it.
 
     ``sleep`` overrides the delay between attempts; tests pass a no-op so the
     backoff behaviour can be exercised without real waiting.
@@ -276,6 +291,7 @@ def request(
             url,
             params,
             headers,
+            body,
         )
     finally:
         if owns_client:
@@ -292,8 +308,9 @@ def _send(
     url: str,
     params: Mapping[str, str] | None,
     headers: Mapping[str, str] | None,
+    body: object | None = None,
 ) -> httpx.Response:
-    response = client.request(method, url, params=params, headers=headers)
+    response = client.request(method, url, params=params, headers=headers, json=body)
     log.debug("http.request", method=method.upper(), url=url, status=response.status_code)
     return response
 
