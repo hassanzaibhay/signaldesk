@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import tempfile
 import zipfile
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -29,7 +30,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
+from tenacity import (
+    RetryCallState,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 from signaldesk.core.config import Settings, get_settings
 from signaldesk.core.errors import IngestError
@@ -63,6 +70,26 @@ BULK_TIMEOUT = httpx.Timeout(connect=30.0, read=300.0, write=60.0, pool=30.0)
 #: because this host closes connections mid-body regularly enough that whole-file
 #: restarts would rarely finish.
 SEGMENT_ATTEMPTS = 8
+
+
+def _log_retry(state: RetryCallState) -> None:
+    """Say why an archive attempt failed, before sleeping on it.
+
+    Without this the retry is silent, and a quarter that fails the full three
+    times produces one traceback describing only the last attempt. That is what
+    happened to 2014Q1: the first two failures were retryable and left no record
+    at all, so there was nothing to distinguish three occurrences of one fault
+    from three different ones.
+    """
+    outcome = state.outcome
+    error = outcome.exception() if outcome is not None else None
+    log.warning(
+        "faers.download.retrying",
+        attempt=state.attempt_number,
+        of=DOWNLOAD_ATTEMPTS,
+        error=type(error).__name__ if error is not None else "unknown",
+        detail=str(error)[:300] if error is not None else "",
+    )
 
 
 def _bulk_client(settings: Settings) -> httpx.Client:
@@ -130,6 +157,13 @@ def _fetch_segment(url: str, start: int, end: int, path: Path, settings: Setting
                 headers = {"Range": f"bytes={start + written}-{end}"}
                 with client.stream("GET", url, headers=headers) as response:
                     if response.status_code != httpx.codes.PARTIAL_CONTENT:
+                        log.error(
+                            "faers.download.segment_status",
+                            start=start,
+                            end=end,
+                            attempt=attempt,
+                            status=response.status_code,
+                        )
                         message = (
                             f"segment {start}-{end} returned {response.status_code}, expected 206"
                         )
@@ -157,6 +191,14 @@ def _fetch_segment(url: str, start: int, end: int, path: Path, settings: Setting
         if written == before:
             log.warning("faers.download.segment_stalled", start=start, end=end, attempt=attempt)
         if attempt == SEGMENT_ATTEMPTS:
+            log.error(
+                "faers.download.segment_exhausted",
+                start=start,
+                end=end,
+                attempts=SEGMENT_ATTEMPTS,
+                have=written,
+                want=expected,
+            )
             message = f"segment {start}-{end} stopped at {written} of {expected} bytes"
             raise IngestError(message)
 
@@ -169,13 +211,35 @@ def _fetch_segment(url: str, start: int, end: int, path: Path, settings: Setting
 def _download_segmented(
     url: str, path: Path, total: int, settings: Settings, *, segments: int
 ) -> None:
-    """Fetch the file as N byte ranges in parallel, then join them in order."""
+    """Fetch the file as N byte ranges in parallel, then join them in order.
+
+    The part files live in a directory unique to this call. They used to be
+    siblings of the target named after the quarter, which meant two overlapping
+    calls for one quarter shared them: the second call's cleanup, or its
+    workers' opening `unlink`, would delete the first call's parts in the window
+    between its workers returning and its concatenation reading them. That is
+    the only way this function can reach a missing part after every worker
+    succeeded, and it is what 2014Q1 looked like.
+
+    `mkdtemp` is atomic, so the collision is closed by construction rather than
+    by locking. The directory is created beside the target on purpose: `/data`
+    is a named volume, and staging on another filesystem would move these writes
+    off it.
+
+    Cleanup gets stronger rather than weaker. One `rmtree` removes the directory
+    and everything in it, so a part the old per-file loop could have missed - a
+    partial write, a name that did not match, a segment count that differed
+    between the loop and the list - cannot survive as an orphan. Fifty-five
+    quarters of orphaned parts is over a terabyte, which is what that cleanup is
+    defending.
+    """
     span = total // segments
     bounds = [
         (index * span, (total - 1) if index == segments - 1 else ((index + 1) * span - 1))
         for index in range(segments)
     ]
-    parts = [path.with_suffix(f".part{index}") for index in range(segments)]
+    staging = Path(tempfile.mkdtemp(dir=path.parent, prefix=f"{path.stem}.parts-"))
+    parts = [staging / f"part{index}" for index in range(segments)]
 
     try:
         with ThreadPoolExecutor(max_workers=segments) as pool:
@@ -186,13 +250,39 @@ def _download_segmented(
             for future in futures:
                 future.result()
 
+        sizes: list[int] = []
         with path.open("wb") as target:
-            for part in parts:
+            for index, part in enumerate(parts):
+                if not part.is_file():
+                    raise _missing_part(index, part, staging)
+                sizes.append(part.stat().st_size)
                 with part.open("rb") as source:
                     shutil.copyfileobj(source, target, CHUNK_BYTES)
+        log.info("faers.download.joined", parts=len(parts), sizes=sizes, bytes=sum(sizes))
     finally:
-        for part in parts:
-            part.unlink(missing_ok=True)
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _missing_part(index: int, part: Path, staging: Path) -> IngestError:
+    """A typed error naming the part and what was actually on disk.
+
+    The bare `FileNotFoundError` this replaces said only which path was absent.
+    It was also not retryable, since it is an `OSError` and the archive retry
+    matches `httpx.TransportError` and `IngestError` only - so it aborted the
+    quarter on its first occurrence while genuinely transient faults got three
+    attempts. Raising `IngestError` makes it retryable, which is the right
+    behaviour for a disk fault and is only acceptable because `_log_retry` now
+    announces every attempt.
+    """
+    try:
+        present = sorted(item.name for item in staging.iterdir())
+    except OSError:
+        present = ["<staging directory is gone>"]
+    message = (
+        f"segment part {index} is missing at {part} after its worker returned; "
+        f"{staging} holds {present}"
+    )
+    return IngestError(message)
 
 
 def _hash_file(path: Path) -> tuple[str, int]:
@@ -209,6 +299,7 @@ def _hash_file(path: Path) -> tuple[str, int]:
     retry=retry_if_exception_type((httpx.TransportError, IngestError)),
     stop=stop_after_attempt(DOWNLOAD_ATTEMPTS),
     wait=wait_exponential_jitter(initial=2.0, max=30.0),
+    before_sleep=_log_retry,
     reraise=True,
 )
 def download_archive(
