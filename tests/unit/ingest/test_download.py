@@ -7,6 +7,7 @@ directory. Those are what the retry and validation logic exists for.
 
 from __future__ import annotations
 
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -16,8 +17,11 @@ import respx
 
 from signaldesk.core.config import Settings
 from signaldesk.core.errors import IngestError
+from signaldesk.ingest.faers import download as download_module
 from signaldesk.ingest.faers.download import (
+    DOWNLOAD_ATTEMPTS,
     Archive,
+    _download_segmented,
     download_archive,
     extract_archive,
     raw_dir,
@@ -195,3 +199,166 @@ def test_a_large_archive_is_fetched_in_segments(settings: Settings) -> None:
     assert archive.path.read_bytes() == payload
     # One sizing request plus one per segment.
     assert route.call_count == 5
+
+
+def _staging_dirs(settings: Settings) -> list[Path]:
+    """Part-staging directories left behind under the raw directory."""
+    base = raw_dir(settings)
+    return sorted(base.glob("*.parts-*")) if base.is_dir() else []
+
+
+class TestSegmentPartLifecycle:
+    """Part files belong to one call, and are cleaned up however it ends.
+
+    2014Q1 failed three times and produced one traceback: FileNotFoundError on
+    2014Q1.part0, at the concatenation. Part paths were siblings of the target
+    named after the quarter, so two overlapping calls shared them and either
+    one's cleanup could delete the other's work. Within a single call the code
+    was sound - the executor's shutdown waits, so no worker outlives the block -
+    and that collision is the only route the code admits to a part being absent
+    after every worker returned successfully.
+    """
+
+    @respx.mock
+    def test_an_overlapping_call_cannot_delete_these_parts(
+        self, settings: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The reproduction. On the previous code this raises the reported error.
+
+        A second call for the same quarter is driven into the exact window the
+        failure needs: after this call's workers have returned, before its
+        concatenation opens part0.
+        """
+        payload = _zip_bytes(size=12 << 20)
+        respx.get(URL).mock(side_effect=_server(payload, ranges=True))
+        path = raw_dir(settings) / f"{QUARTER.label}.zip"
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        real_open = Path.open
+        fired: list[bool] = []
+
+        def open_hook(self: Path, mode: str = "r", *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            if not fired and self == path and "w" in mode:
+                fired.append(True)
+                _download_segmented(URL, path, len(payload), settings, segments=4)
+            return real_open(self, mode, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(Path, "open", open_hook)
+
+        _download_segmented(URL, path, len(payload), settings, segments=4)
+
+        assert fired, "the overlapping call never ran; the test proves nothing"
+        assert path.read_bytes() == payload
+
+    @respx.mock
+    def test_two_calls_stage_their_parts_in_different_directories(
+        self, settings: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = _zip_bytes(size=12 << 20)
+        respx.get(URL).mock(side_effect=_server(payload, ranges=True))
+        path = raw_dir(settings) / f"{QUARTER.label}.zip"
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        seen: list[Path] = []
+        real_mkdtemp = tempfile.mkdtemp
+
+        def record(**kwargs: object) -> str:
+            made: str = real_mkdtemp(**kwargs)  # type: ignore[arg-type]
+            seen.append(Path(made))
+            return made
+
+        monkeypatch.setattr(tempfile, "mkdtemp", record)
+        _download_segmented(URL, path, len(payload), settings, segments=4)
+        _download_segmented(URL, path, len(payload), settings, segments=4)
+
+        assert len(seen) == 2
+        assert seen[0] != seen[1]
+
+    @respx.mock
+    def test_the_staging_directory_is_removed_on_success(self, settings: Settings) -> None:
+        payload = _zip_bytes(size=12 << 20)
+        respx.get(URL).mock(side_effect=_server(payload, ranges=True))
+
+        download_archive(QUARTER, URL, settings, segments=4)
+
+        assert _staging_dirs(settings) == []
+
+    @respx.mock
+    def test_the_staging_directory_is_removed_when_a_segment_fails(
+        self, settings: Settings
+    ) -> None:
+        """No orphans on the failure path either.
+
+        Fifty-five quarters of leaked parts is over a terabyte, which is what
+        this cleanup defends.
+        """
+        respx.get(URL).mock(return_value=httpx.Response(500, content=b"upstream is unwell"))
+        path = raw_dir(settings) / f"{QUARTER.label}.zip"
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with pytest.raises(IngestError):
+            _download_segmented(URL, path, 12 << 20, settings, segments=4)
+
+        assert _staging_dirs(settings) == []
+
+    @respx.mock
+    def test_a_missing_part_raises_a_typed_error_naming_it(
+        self, settings: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Not a bare FileNotFoundError.
+
+        That is an OSError, which the archive retry predicate does not match, so
+        it aborted the quarter on its first occurrence while genuinely transient
+        faults were given three attempts.
+        """
+        payload = _zip_bytes(size=12 << 20)
+        respx.get(URL).mock(side_effect=_server(payload, ranges=True))
+        path = raw_dir(settings) / f"{QUARTER.label}.zip"
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        real_open = Path.open
+        fired: list[bool] = []
+
+        def open_hook(self: Path, mode: str = "r", *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            if not fired and self == path and "w" in mode:
+                fired.append(True)
+                for stray in path.parent.glob("*.parts-*/part0"):
+                    stray.unlink()
+            return real_open(self, mode, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(Path, "open", open_hook)
+
+        with pytest.raises(IngestError, match="segment part 0 is missing"):
+            _download_segmented(URL, path, len(payload), settings, segments=4)
+
+        assert _staging_dirs(settings) == []
+
+
+@respx.mock
+def test_a_failing_archive_attempt_logs_why_before_it_sleeps(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A silent retry turned one bug into three mystery downloads.
+
+    2014Q1's first two attempts left no record at all, so nothing said whether
+    the three failures shared a cause.
+    """
+    respx.get(URL).mock(return_value=httpx.Response(500, content=b"upstream is unwell"))
+    recorded: list[dict[str, object]] = []
+
+    def capture(event: str, **fields: object) -> None:
+        if event == "faers.download.retrying":
+            recorded.append(fields)
+
+    monkeypatch.setattr(download_module.log, "warning", capture)
+    monkeypatch.setattr(download_module, "remote_size", lambda url, settings=None: None)
+
+    with pytest.raises(IngestError):
+        download_archive(QUARTER, URL, settings, segments=4)
+
+    # Two sleeps for three attempts.
+    assert len(recorded) == DOWNLOAD_ATTEMPTS - 1
+    assert [entry["attempt"] for entry in recorded] == [1, 2]
+    for entry in recorded:
+        assert entry["error"] == "IngestError"
+        assert entry["detail"]
