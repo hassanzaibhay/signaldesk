@@ -1,0 +1,15 @@
+{
+  "meta": { "results": { "skip": 0, "limit": 100, "total": 1 } },
+  "results": [
+    {
+      "set_id": "6a1b2c3d-0000-4a11-9f00-000000000002",
+      "effective_time": "20130904",
+      "warnings": [
+        "   ",
+        "WARNINGS Anaphylactoid reactions have occurred in patients receiving this drug.",
+        ""
+      ],
+      "adverse_reactions": []
+    }
+  ]
+}

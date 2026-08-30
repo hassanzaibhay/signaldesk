@@ -1,0 +1,21 @@
+{
+  "meta": { "results": { "skip": 0, "limit": 100, "total": 2 } },
+  "results": [
+    {
+      "set_id": "6a1b2c3d-0000-4a11-9f00-000000000003",
+      "id": "old-revision",
+      "version": "2",
+      "effective_time": "20190301",
+      "adverse_reactions": ["6 ADVERSE REACTIONS Nausea and dizziness were reported."],
+      "openfda": { "brand_name": ["PLACEBOSTAT"] }
+    },
+    {
+      "set_id": "6a1b2c3d-0000-4a11-9f00-000000000003",
+      "id": "new-revision",
+      "version": "5",
+      "effective_time": "20250612",
+      "adverse_reactions": ["6 ADVERSE REACTIONS Nausea was reported."],
+      "openfda": { "brand_name": ["PLACEBOSTAT"] }
+    }
+  ]
+}
