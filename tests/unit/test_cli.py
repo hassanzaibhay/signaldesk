@@ -36,7 +36,6 @@ def test_version_prints_the_package_version() -> None:
 @pytest.mark.parametrize(
     ("command", "prompt"),
     [
-        (["ingest", "labels"], "P05"),
         (["ingest", "ctgov"], "P06"),
         (["ingest", "pubmed"], "P07"),
         (["normalize", "drugs"], "P03"),
@@ -60,11 +59,20 @@ def test_implemented_signal_commands_are_listed() -> None:
 
 
 def test_implemented_ingest_commands_are_listed() -> None:
-    """FAERS ingest is implemented, so it must no longer advertise a prompt."""
+    """FAERS and SPL ingest are implemented, so they no longer advertise a prompt."""
     result = runner.invoke(app, ["ingest", "--help"])
     assert result.exit_code == 0
-    for command in ("faers", "faers-dedup", "faers-status", "faers-quality"):
+    for command in ("faers", "faers-dedup", "faers-status", "faers-quality", "labels"):
         assert command in result.stdout
+
+
+def test_label_ingest_takes_a_scope_cap() -> None:
+    """The first run is capped and measured rather than fetching every flagged
+    string, so the cap has to be reachable from the command line."""
+    result = runner.invoke(app, ["ingest", "labels", "--help"])
+    assert result.exit_code == 0
+    assert "--top-k" in result.stdout
+    assert "--run-id" in result.stdout
 
 
 def test_evals_run_reports_the_suite_it_cannot_run_yet() -> None:
