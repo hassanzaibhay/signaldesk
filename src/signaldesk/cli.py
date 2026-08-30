@@ -698,8 +698,31 @@ def evals_run(
 
 @evals_app.command("record-cassettes")
 def evals_record_cassettes() -> None:
-    """Record model responses so continuous integration can replay them offline."""
-    _owned_by("P11", "cassette recording")
+    """Record model responses so continuous integration can replay them offline.
+
+    The only command in this project that makes a live model call. It needs
+    provider keys, is never run by continuous integration, and must be run by
+    hand.
+
+    The cassettes committed today were written from vendor documentation rather
+    than captured, so the suite is green against shapes that have not been
+    checked against a provider. This replaces them and prints every field where
+    the real body differed from the hand-written one, which is the evidence for
+    whether any of the parsing was built on a wrong assumption.
+    """
+    import os
+
+    from signaldesk.rag.llm import cassettes, recording
+
+    if cassettes.current_mode() is cassettes.Mode.REPLAY:
+        # Recording under the replay default would serve the cassettes back to
+        # themselves and report that nothing differed.
+        os.environ[cassettes.MODE_ENV_VAR] = str(cassettes.Mode.RECORD)
+
+    report = recording.record(recording.default_interactions())
+    typer.echo(recording.render(report))
+    if report.failed:
+        raise typer.Exit(code=1)
 
 
 @demo_app.command("load")
