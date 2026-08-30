@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     cerebras_api_key: str = ""
     ollama_base_url: str = "http://ollama:11434"
     ollama_model: str = "qwen2.5:7b-instruct"
+    #: Ollama has no API key, so presence of a base URL says nothing about
+    #: whether anything is listening on it. Without an explicit switch the
+    #: provider looks configured everywhere and sits permanently at the end of
+    #: the chain, turning every exhausted chain into a connection timeout
+    #: instead of a fast skip. Off unless someone says otherwise.
+    ollama_enabled: bool = False
     llm_max_attempts: PositiveInt = 3
     llm_timeout_seconds: PositiveInt = 90
 

@@ -1,0 +1,31 @@
+{
+  "body": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "{\"drug\": \"atorvastatin\", \"reaction\": \"rhabdomyolysis\", \"terms_found\": 2}",
+          "role": "assistant"
+        }
+      }
+    ],
+    "id": "chatcmpl-constructed-cerebras",
+    "model": "llama-3.3-70b",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 25,
+      "prompt_tokens": 121,
+      "total_tokens": 146
+    }
+  },
+  "constructed": true,
+  "constructed_at": "2026-08-30",
+  "key": "a41aa691bdcf8a53fc3c1647cfa56efd",
+  "model": "llama-3.3-70b",
+  "prompt_version": "router_probe_v1",
+  "provider": "cerebras",
+  "recorded_at": null,
+  "schema_name": "RouterProbe",
+  "status_code": 200
+}
