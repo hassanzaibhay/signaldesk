@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import typer.main
+from typer.core import TyperGroup
 from typer.testing import CliRunner
 
 from signaldesk import __version__
@@ -68,11 +70,19 @@ def test_implemented_ingest_commands_are_listed() -> None:
 
 def test_label_ingest_takes_a_scope_cap() -> None:
     """The first run is capped and measured rather than fetching every flagged
-    string, so the cap has to be reachable from the command line."""
-    result = runner.invoke(app, ["ingest", "labels", "--help"])
-    assert result.exit_code == 0
-    assert "--top-k" in result.stdout
-    assert "--run-id" in result.stdout
+    string, so the cap has to be reachable from the command line.
+
+    Read off the registered parameters rather than the rendered help. Typer
+    renders help through Rich, which wraps to the terminal width and emits ANSI
+    escapes, so a substring assertion against that text passes on a wide
+    terminal and fails on a narrow one.
+    """
+    group = typer.main.get_command(app)
+    assert isinstance(group, TyperGroup)
+    ingest = group.commands["ingest"]
+    assert isinstance(ingest, TyperGroup)
+    options = {opt for param in ingest.commands["labels"].params for opt in param.opts}
+    assert {"--top-k", "--run-id", "--force"} <= options
 
 
 def test_evals_run_reports_the_suite_it_cannot_run_yet() -> None:
