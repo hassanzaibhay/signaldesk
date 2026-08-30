@@ -1,0 +1,33 @@
+{
+  "body": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "{\"drug\": \"atorvastatin\", \"reaction\": \"rhabdomyolysis\", \"terms_found\": 2}"
+            }
+          ],
+          "role": "model"
+        },
+        "finishReason": "STOP",
+        "index": 0
+      }
+    ],
+    "modelVersion": "gemini-2.5-flash",
+    "usageMetadata": {
+      "candidatesTokenCount": 24,
+      "promptTokenCount": 118,
+      "totalTokenCount": 142
+    }
+  },
+  "constructed": true,
+  "constructed_at": "2026-08-30",
+  "key": "db8b3fc9fb80ffcd1b9804bf2d1c7fa8",
+  "model": "gemini-2.5-flash",
+  "prompt_version": "router_probe_v1",
+  "provider": "gemini",
+  "recorded_at": null,
+  "schema_name": "RouterProbe",
+  "status_code": 200
+}

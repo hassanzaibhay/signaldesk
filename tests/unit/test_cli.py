@@ -42,7 +42,6 @@ def test_version_prints_the_package_version() -> None:
         (["ingest", "pubmed"], "P07"),
         (["normalize", "drugs"], "P03"),
         (["index", "build"], "P10"),
-        (["evals", "record-cassettes"], "P11"),
     ],
 )
 def test_unimplemented_stage_names_its_roadmap_prompt(command: list[str], prompt: str) -> None:
@@ -83,6 +82,24 @@ def test_label_ingest_takes_a_scope_cap() -> None:
     assert isinstance(ingest, TyperGroup)
     options = {opt for param in ingest.commands["labels"].params for opt in param.opts}
     assert {"--top-k", "--run-id", "--force"} <= options
+
+
+def test_cassette_recording_is_implemented_and_documented_as_live() -> None:
+    """The one command that calls a provider. Its help has to say so, because
+    everything else in the project runs offline and a reader will assume this
+    does too."""
+    result = runner.invoke(app, ["evals", "record-cassettes", "--help"])
+    assert result.exit_code == 0
+    assert not isinstance(result.exception, NotImplementedError)
+
+    from signaldesk.cli import evals_record_cassettes
+
+    # Whitespace-normalised: the docstring wraps, so a phrase can straddle a
+    # line break and a naive substring check would miss it.
+    doc = " ".join((evals_record_cassettes.__doc__ or "").split())
+    assert "only command in this project that makes a live model call" in doc
+    assert "never run by continuous integration" in doc
+    assert "must be run by hand" in doc
 
 
 def test_evals_run_reports_the_suite_it_cannot_run_yet() -> None:
