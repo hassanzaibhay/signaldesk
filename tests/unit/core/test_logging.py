@@ -97,16 +97,29 @@ def test_django_logging_config_routes_project_loggers() -> None:
 class TestCredentialRedaction:
     """The api_key must not reach stdout, whatever emits it."""
 
-    def test_httpx_is_pinned_below_info_even_under_verbose(self, restore_logging: None) -> None:
-        """--verbose sets the root to DEBUG and must not re-expose the line.
+    @pytest.mark.parametrize("name", ["httpx", "httpcore"])
+    def test_the_http_loggers_are_pinned_below_info_even_under_verbose(
+        self, name: str, restore_logging: None
+    ) -> None:
+        """--verbose sets the root to DEBUG and must not re-expose these.
 
-        httpx logs every request at INFO with the full URL. The pin is on the
-        logger rather than on the root level for exactly this case: a level check
-        against the root would pass here and the line would still be emitted.
+        httpx logs every request at INFO with the full URL; httpcore emits
+        several connection traces per request at DEBUG, and the dev settings run
+        the root at DEBUG. The pin is on each logger rather than on the root
+        level for exactly this case: a level check against the root would pass
+        here and both would still be emitted.
+
+        httpcore is a volume pin, not an exposure one. Its records carry
+        "<Request [b'GET']>" rather than a URL, checked before pinning.
         """
         configure_logging(debug=True)
         assert logging.getLogger().isEnabledFor(logging.DEBUG)
-        assert not logging.getLogger("httpx").isEnabledFor(logging.INFO)
+        assert not logging.getLogger(name).isEnabledFor(logging.INFO)
+
+    @pytest.mark.parametrize("name", ["httpx", "httpcore"])
+    def test_the_django_configuration_pins_them_too(self, name: str) -> None:
+        """Two configuration paths, one pair of loggers. Both must agree."""
+        assert django_logging_config(debug=True)["loggers"][name]["level"] == "WARNING"
 
     def test_a_credential_is_redacted_from_a_logger_nobody_pinned(
         self, restore_logging: None, capsys: pytest.CaptureFixture[str]
@@ -190,6 +203,7 @@ class TestCredentialRedaction:
         logging.config.dictConfig(django_logging_config(debug=True))
 
         assert not logging.getLogger("httpx").isEnabledFor(logging.INFO)
+        assert not logging.getLogger("httpcore").isEnabledFor(logging.INFO)
 
         logging.getLogger("some.library").info(
             HTTPX_FORMAT, "GET", _probe_url(), "HTTP/1.1", 200, "OK"

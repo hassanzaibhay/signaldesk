@@ -93,3 +93,93 @@ def test_the_guard_short_circuits_main(
 
     assert hygiene.main([]) == 2
     assert capsys.readouterr().out == "hygiene: nope\n"
+
+
+class TestNothingSitsUntrackedUnderEvalsHistory:
+    """The third rule, and the reason it has to be a rule.
+
+    Rules 1 and 2 read `git ls-files`, so an artifact that is written and never
+    staged is invisible to them. Six accumulated that way before anyone looked,
+    including the signal run the label pipeline scoped from and the run whose
+    cached bytes the clean run replayed. "Remember to commit the artifact" is a
+    human remembering, which is the shape this rule replaces.
+    """
+
+    def test_an_untracked_artifact_fails_the_whole_repository_run(
+        self,
+        hygiene: ModuleType,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        # .git is not mounted into the container, so repo_root cannot run there.
+        monkeypatch.setattr(hygiene, "repo_root", lambda: Path("/repo"))
+        monkeypatch.setattr(hygiene, "tracked_files", list)
+        monkeypatch.setattr(
+            hygiene,
+            "untracked_artifacts",
+            lambda: ["evals/history/spl_ingest_20260901T114909Z.json"],
+        )
+
+        assert hygiene.main([]) == 1
+        out = capsys.readouterr().out
+        assert "spl_ingest_20260901T114909Z.json" in out
+        assert "commit it or delete it" in out
+
+    def test_a_clean_history_directory_passes(
+        self,
+        hygiene: ModuleType,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(hygiene, "repo_root", lambda: Path("/repo"))
+        monkeypatch.setattr(hygiene, "tracked_files", list)
+        monkeypatch.setattr(hygiene, "untracked_artifacts", list)
+
+        assert hygiene.main([]) == 0
+        assert "no violations" in capsys.readouterr().out
+
+    def test_a_targeted_run_does_not_fail_on_an_unrelated_stray(
+        self,
+        hygiene: ModuleType,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Given explicit paths the caller is asking about those files.
+
+        Failing a targeted check on an untracked artifact elsewhere would make
+        it useless for the thing it is mostly used for, which is checking one
+        file before staging it.
+        """
+
+        def _fail() -> list[str]:  # pragma: no cover - reached only on a scope leak
+            message = "untracked_artifacts must not run for a targeted check"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(hygiene, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(hygiene, "untracked_artifacts", _fail)
+        target = tmp_path / "plain.txt"
+        target.write_text("ascii only\n", encoding="utf-8")
+
+        assert hygiene.main([str(target)]) == 0
+
+    def test_the_query_asks_git_for_untracked_and_unignored_paths(
+        self, hygiene: ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The flags are the rule.
+
+        Without --others it reports nothing; without --exclude-standard it would
+        report ignored files too and the gate would fail on data nobody intends
+        to commit. Pinning the arguments keeps both halves honest.
+        """
+        seen: list[list[str]] = []
+
+        def _capture(args: list[str]) -> str:
+            seen.append(args)
+            return "evals/history/stray.json\0"
+
+        monkeypatch.setattr(hygiene, "run_git", _capture)
+
+        assert hygiene.untracked_artifacts() == ["evals/history/stray.json"]
+        assert seen == [
+            ["ls-files", "-z", "--others", "--exclude-standard", "--", "evals/history/"]
+        ]

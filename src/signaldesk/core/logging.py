@@ -31,9 +31,19 @@ _REDACT = CredentialRedactingFilter()
 #: the logger rather than on the root level because ``--verbose`` sets the root to
 #: DEBUG and would otherwise re-expose the line it was meant to suppress.
 #:
-#: The pin is a level, not a redaction. It is the redaction filter that makes the
-#: credential safe; this only stops several hundred uninteresting lines per run.
-_QUIET_LOGGERS: dict[str, int] = {"httpx": logging.WARNING}
+#: ``httpcore`` is here for volume rather than exposure. It emits several trace
+#: records per request at DEBUG - connect, send headers, send body, receive
+#: headers, receive body, close - and the dev settings run the root at DEBUG, so
+#: a 327-page ingest buries its own output in a few thousand connection traces.
+#: Checked before pinning: those records carry ``<Request [b'GET']>``, not a URL,
+#: so nothing was leaking through them.
+#:
+#: The pin is a level, not a redaction. It is the redaction filter that makes a
+#: credential safe; this only stops lines nobody reads.
+_QUIET_LOGGERS: dict[str, int] = {
+    "httpx": logging.WARNING,
+    "httpcore": logging.WARNING,
+}
 
 
 def configure_logging(*, debug: bool = False) -> None:
@@ -137,9 +147,11 @@ def django_logging_config(*, debug: bool = False) -> dict[str, Any]:
                 "propagate": False,
             },
             # Pinned to WARNING independently of ``level``, so DEBUG here does
-            # not restore the per-request line carrying the query string. Same
-            # reason as _QUIET_LOGGERS, which covers the command line path.
+            # not restore the per-request line carrying the query string, nor the
+            # several connection traces httpcore emits per request. Same reason
+            # and same pair as _QUIET_LOGGERS, which covers the command line path.
             "httpx": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+            "httpcore": {"handlers": ["console"], "level": "WARNING", "propagate": False},
             "signaldesk": {"handlers": ["console"], "level": level, "propagate": False},
         },
     }

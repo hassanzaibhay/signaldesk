@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Encoding and commit-metadata checks for tracked files.
+"""Encoding, commit-metadata and artifact-tracking checks.
 
-Two rules, both mechanical:
+Three rules, all mechanical:
 
 1. Tracked text files are pure ASCII. Mixing ASCII hyphens with dashes, straight
    quotes with curly quotes, and plain spaces with non-breaking spaces produces
@@ -14,6 +14,16 @@ Two rules, both mechanical:
 2. No co-authorship trailers in tracked content. Commit metadata belongs in the
    commit, not in the working tree, and a stray trailer in a file confuses tools
    that parse trailers out of message bodies.
+
+3. Nothing sits untracked under evals/history/. CLAUDE.md requires every
+   published number to trace to a committed artifact there, and rules 1 and 2
+   read `git ls-files`, so an artifact that is never staged is never checked and
+   never noticed. Six accumulated that way, including the run backing the figures
+   quoted for this pipeline. An artifact deliberately not to be committed - a run
+   that measured nothing, a warm re-run whose figures are wrong - gets deleted,
+   which is what happened to two of them. It does not get left sitting stageable,
+   because a directory a reader believes is the provenance record is worse when
+   it is silently partial than when it is visibly wrong.
 
 Data fixtures are exempt: real source data legitimately contains non-ASCII
 characters, and rewriting it would corrupt the input the pipeline is measured on.
@@ -113,6 +123,23 @@ def tracked_files() -> list[str]:
     return [name for name in output.split("\0") if name]
 
 
+#: The directory whose contents must all be committed.
+ARTIFACT_ROOT = "evals/history/"
+
+
+def untracked_artifacts() -> list[str]:
+    """Files under ``evals/history/`` that git is neither tracking nor ignoring.
+
+    ``--others`` lists untracked paths and ``--exclude-standard`` applies the
+    ignore rules, so a path deliberately ignored is not reported. Nothing under
+    this directory is ignored today, which is the point: an artifact written
+    there is stageable, invisible to every other check here, and one ``git add``
+    away from being published without ever having been inspected.
+    """
+    output = run_git(["ls-files", "-z", "--others", "--exclude-standard", "--", ARTIFACT_ROOT])
+    return sorted(name for name in output.split("\0") if name)
+
+
 def is_allowlisted(name: str) -> bool:
     return any(name.startswith(prefix) for prefix in ALLOWLIST)
 
@@ -205,8 +232,19 @@ def main(argv: Sequence[str]) -> int:
         sys.stdout.write(f"{problem}\n")
         return 2
     root = repo_root()
-    names = [normalize(root, argument) for argument in argv] if argv else tracked_files()
+    explicit = bool(argv)
+    names = [normalize(root, argument) for argument in argv] if explicit else tracked_files()
     violations = check_files(root, names)
+
+    # Only on a whole-repository run. Given explicit paths the caller is asking
+    # about those files, and failing on an unrelated untracked artifact would
+    # make a targeted check unusable.
+    stray = [] if explicit else untracked_artifacts()
+    for name in stray:
+        violations.append(
+            Violation(name, 1, 1, f"untracked file under {ARTIFACT_ROOT}; commit it or delete it")
+        )
+
     if not violations:
         sys.stdout.write(f"hygiene: {len(names)} files checked, no violations\n")
         return 0
@@ -218,6 +256,13 @@ def main(argv: Sequence[str]) -> int:
         "Replace dashes with '-' or '--', curly quotes with straight quotes, and\n"
         "ellipsis characters with '...'.\n"
     )
+    if stray:
+        sys.stdout.write(
+            f"\nEvery file under {ARTIFACT_ROOT} must be committed, because that is\n"
+            "where published numbers are traced to and the other checks here only\n"
+            "see tracked files. A run that measured nothing, or whose figures are\n"
+            "known wrong, gets deleted rather than left untracked.\n"
+        )
     return 1
 
 
