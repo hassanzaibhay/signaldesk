@@ -1,0 +1,67 @@
+{
+  "date_precision_event_dt": {
+    "day": 87887,
+    "missing": 112385,
+    "month": 37359,
+    "year": 22426
+  },
+  "deduplication": {
+    "stage1_superseded_versions_across_quarters": 0,
+    "stage1_superseded_versions_within_quarter": 0,
+    "stage1_withdrawn_by_source": 0
+  },
+  "generated_at": "2026-08-30T20:24:38.238085+00:00",
+  "normalization_nulls": {
+    "age_missing_or_unconvertible": 161,
+    "country_from_reporter_fallback": 28196,
+    "country_missing": 205,
+    "prod_ai_absent": 901608,
+    "weight_implausible_unit": 1,
+    "weight_missing_or_unconvertible": 75
+  },
+  "prod_ai_coverage": {
+    "note": "The source only publishes prod_ai from 2014Q3 onward; earlier rows are null by construction, not by data quality.",
+    "rows_total": 901608,
+    "rows_with_value": 0,
+    "share": 0.0
+  },
+  "quarters": {
+    "ingested": [
+      "2014Q1"
+    ],
+    "skipped": [],
+    "without_deleted_cases_file": [
+      "2014Q1"
+    ]
+  },
+  "rows": {
+    "per_quarter": {
+      "2014Q1": {
+        "case": 260057,
+        "drug": 901608,
+        "indication": 581696,
+        "outcome": 170437,
+        "reaction": 754668,
+        "report_source": 37839,
+        "therapy": 329817
+      }
+    },
+    "totals": {
+      "case": 260057,
+      "drug": 901608,
+      "indication": 581696,
+      "outcome": 170437,
+      "reaction": 754668,
+      "report_source": 37839,
+      "therapy": 329817
+    }
+  },
+  "timing": {
+    "bytes_downloaded_per_quarter": {
+      "2014Q1": 30461865
+    },
+    "seconds_per_quarter": {
+      "2014Q1": 294.0
+    }
+  }
+}

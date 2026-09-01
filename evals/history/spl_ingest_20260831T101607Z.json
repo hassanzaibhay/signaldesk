@@ -1,0 +1,40 @@
+{
+  "cost": {
+    "api_key_present": false,
+    "bytes_received": 1818645721,
+    "daily_cap_assumed": 1000,
+    "note": "One request per drug string plus paging. The ingredient route, which would have collapsed many strings onto one request per shared ingredient, contributes nothing: RxNorm normalization is not being rebuilt and DrugStringMatch is empty, so every string costs its own request.",
+    "requests": 327,
+    "seconds": 1549.56
+  },
+  "quotable": {
+    "note": "hit_rate is measured and quotable. n_total_flagged_strings is measured and quotable, and supersedes any earlier 'head drugs' figure, which had no tracked definition."
+  },
+  "resolution": {
+    "attempted": 200,
+    "by_route": {
+      "cleaned_string": 200,
+      "ingredient": 0,
+      "override": 0
+    },
+    "errors": 0,
+    "from_override_file": 0,
+    "hit_at_least_one_label": 191,
+    "hit_rate": 0.955,
+    "resolved_to_nothing": 9,
+    "skipped_already_complete": 0
+  },
+  "run_id": "20260831T101607Z",
+  "scope": {
+    "definition": "A raw drug string carries signal when it appears in at least one scored pair with flag_ror_prr_bcpnn and not insufficient, for the signal run read. Selection is the top_k strings by descending count of such pairs, ties broken by the string ascending.",
+    "n_total_flagged_strings": 30549,
+    "predicate_note": "The 'not insufficient' conjunct removed nothing on the runs measured so far: signals_20260818T051858Z.json reports ror_prr_bcpnn 1393815, ror_prr_bcpnn_including_insufficient 1393815 and bcpnn 1393815, all equal, so the predicate reduces to flag_bcpnn. It is retained for intent and must not be reported as a filter that excluded pairs.",
+    "selected": 200,
+    "top_k": 200
+  },
+  "stored": {
+    "documents": 18048,
+    "sections": 41719
+  },
+  "written_at": "2026-08-31T10:41:56.745099+00:00"
+}
