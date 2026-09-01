@@ -104,6 +104,73 @@ def store_labels(
     return StoreCounts(documents=documents, sections=sections, drug_keys=drug_keys)
 
 
+def attach_drug_keys(
+    *,
+    folded_string: str,
+    query: str,
+    route: str,
+    ingredient_rxcui: int | None = None,
+) -> int:
+    """Key a string to the documents another string's fetch already stored.
+
+    Several drug strings can clean to one query, and the manifest is keyed on
+    the query, so only the first is fetched. The rest still need their own
+    reach-through: the FAERS string is the join key back to the signal table,
+    and a lookup on the exact string has to resolve.
+
+    The documents are found by ``query``, which is the manifest identity - every
+    string in a group asked openFDA the same thing and reached the same labels.
+
+    Writes ``LabelDrugKey`` and nothing else. No ``LabelDocument``, no
+    ``LabelSection``: those belong to the unit that fetched them, and re-storing
+    them here would put the run's distinct document and section counts wrong
+    again in a new way.
+
+    Returns the number of distinct documents this string now reaches, which is
+    also the number of rows written.
+
+    ``order_by()`` is load-bearing and must not be dropped. ``Meta.ordering`` on
+    ``LabelDrugKey`` is ``["folded_string", "document"]``, and Django appends the
+    ordering columns to a ``values_list(...).distinct()`` so the database can sort
+    by them. The DISTINCT is then over ``(document_id, folded_string, set_id)``
+    rather than over ``document_id``, and the list comes back with one entry per
+    (document, string) pair. On the real corpus that is a clean multiple: the
+    ``GABAPENTIN`` query returned 828 entries for 414 documents once two strings
+    were keyed to it. Stripping the ordering makes the DISTINCT mean what it says.
+
+    The rows written were always right, because ``update_or_create`` is keyed on
+    (folded_string, document) and a repeated id is a no-op. Only the count was
+    wrong, which is worse in one specific way: it is the number the run artifact
+    reports, so it was inflated in the artifact while the database was correct.
+    """
+    document_ids = list(
+        LabelDrugKey.objects.filter(query=query)
+        .order_by()
+        .values_list("document_id", flat=True)
+        .distinct()
+    )
+    written = 0
+    with transaction.atomic():
+        for document_id in document_ids:
+            LabelDrugKey.objects.update_or_create(
+                folded_string=folded_string,
+                document_id=document_id,
+                defaults={
+                    "query": query,
+                    "route": route,
+                    "ingredient_rxcui": ingredient_rxcui,
+                },
+            )
+            written += 1
+    log.info(
+        "spl.store.keys_attached",
+        folded_string=folded_string,
+        query=query,
+        drug_keys=written,
+    )
+    return written
+
+
 def sections_for(folded_string: str, codes: tuple[str, ...] | None = None) -> list[LabelSection]:
     """Every stored section reachable from one drug string.
 

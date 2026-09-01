@@ -383,15 +383,91 @@ def ingest_labels(
 
     result = pipeline.run(run_id=run_id, top_k=top_k, force=force)
     path = pipeline.write_artifact(result)
-    attempted = result.attempted
-    hits = sum(1 for item in attempted if item.hit)
+    # The same object the artifact reports, so the terminal and the committed
+    # document cannot disagree. The old line divided this run's hits by this
+    # run's attempts and printed "1 of 1 (100.0%)" beside an artifact describing
+    # 200 strings.
+    resolved = pipeline.resolution(result)
+
     typer.echo(f"flagged drug strings (N): {result.n_total:,}")
     typer.echo(f"selected: {len(result.units):,} (top_k={result.top_k})")
-    typer.echo(
-        f"resolved to at least one label: {hits:,} of {len(attempted):,} attempted"
-        + (f" ({hits / len(attempted):.1%})" if attempted else "")
-    )
+    for label, total, rate in (
+        (
+            "distinct queries",
+            resolved.distinct_queries_selected,
+            resolved.hit_rate_distinct_queries,
+        ),
+        ("selected slots", resolved.selected_slots, resolved.hit_rate_selected_slots),
+    ):
+        suffix = f" ({rate:.1%})" if rate is not None else ""
+        typer.echo(
+            f"resolved, {label}: {resolved.distinct_queries_resolved:,} of {total:,}{suffix}"
+        )
+    typer.echo("both rates are reported together; neither is quotable alone")
+    if resolved.distinct_queries_unknown_state:
+        typer.echo(
+            f"terminal state unknown for "
+            f"{resolved.distinct_queries_unknown_state:,} queries; "
+            "both rates are lower bounds"
+        )
     typer.echo(f"artifact written to {path}")
+
+
+@ingest_app.command("labels-check-key")
+def ingest_labels_check_key() -> None:
+    """Prove the openFDA key in this container works, before the label ingest runs.
+
+    Run it inside the container that will run the ingest, after a recreate.
+    Compose reads env_file at container creation, so a host that has the key says
+    nothing about a container that was built before it was added: that is exactly
+    how the 10:16 run made 327 keyless requests against a 1,000 per day cap while
+    the developer machine had a key.
+
+    Makes two live requests, writes no artifact, and is not part of any run.
+    """
+    _setup_django()
+    from signaldesk.ingest.spl import client
+
+    check = client.verify_api_key()
+
+    typer.echo(f"container: {check.host}")
+    typer.echo(f"key present in this process: {check.key_present}")
+    for probe, label in ((check.with_key, "with key"), (check.without_key, "without key")):
+        typer.echo(
+            f"  {label:12} status {probe.status}  results {probe.results}  "
+            f"{client.RATE_LIMIT_HEADER}={probe.rate_limit or 'absent'}  "
+            f"{client.RATE_REMAINING_HEADER}={probe.rate_remaining or 'absent'}"
+        )
+
+    if not check.accepted:
+        typer.echo(
+            "FAILED: openFDA did not answer a keyed request with results. "
+            "A 403 here is an invalid key; anything else is the service."
+        )
+        raise typer.Exit(code=1)
+
+    if check.inconclusive:
+        typer.echo(
+            "INCONCLUSIVE: the key was accepted, but no rate-limit header came "
+            "back on the keyed request. A response served from the api-umbrella "
+            "cache can omit it. Run the check again before reading anything into "
+            "it; this is not a verdict on the key."
+        )
+        raise typer.Exit(code=2)
+
+    typer.echo("OK: the key was accepted, and openFDA returned results.")
+    if check.header_discriminated:
+        typer.echo(
+            "the rate-limit header discriminated by presence: it came back on the "
+            "keyed request and not on the keyless one. Its value is the "
+            "per-minute ceiling and is the same either way; the daily cap that "
+            "does differ never appears in a header."
+        )
+    else:
+        typer.echo(
+            "the rate-limit header did not discriminate on this run. Status 200 "
+            "with results is what proves the key, and it did."
+        )
 
 
 @ingest_app.command("ctgov")

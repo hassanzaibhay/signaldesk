@@ -70,6 +70,14 @@ it, labeledness classification against a hand-annotated gold set, citation
 precision, judge agreement with a human annotator, and latency and cost per
 query.
 
+### Known gaps in provenance
+
+Ingest run artifacts do not record the code sha that produced them; analytics
+artifacts do. Until that is fixed, an ingest artifact cannot be traced to a
+commit from the artifact alone, and the guarantee that every published number
+traces to a committed artifact rests on the ingest being run from a clean tree
+rather than on anything the artifact records.
+
 ## Data sources and licensing
 
 Source provenance, licence terms, and refresh cadence are documented in

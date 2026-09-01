@@ -15,6 +15,10 @@ tracked definition of that set:
 published runs, the artifact marks EBGM05 provisional, and scoping a document
 corpus on a column that must not be quoted would make the corpus unquotable too.
 
+Where the signal table lives, and how its run partitions are named, is read
+through ``analytics.signals`` and is not defined here. This module names no
+partition and builds no path into one.
+
 ## The cap
 
 The full flagged set is not fetched. ``select`` takes ``top_k`` and returns the
@@ -51,7 +55,8 @@ from pathlib import Path
 
 import polars as pl
 
-from signaldesk.core.config import Settings, get_settings
+from signaldesk.analytics import signals
+from signaldesk.core.config import Settings
 from signaldesk.core.errors import SignalDeskError
 from signaldesk.core.logging import get_logger
 
@@ -84,44 +89,74 @@ class ScopeUnit:
 
     @property
     def manifest_unit(self) -> str:
-        """Key for the ingest manifest.
+        """Key for the ingest manifest: what was asked for, not who asked.
 
-        ``IngestManifest.unit`` is 32 characters and a drug string is not, so a
-        string-routed unit is keyed on a digest of the string rather than the
-        string itself. The digest is of the folded string, which is what the
-        selection is keyed on, so the unit is stable across runs.
+        ``IngestManifest.unit`` is 32 characters and a query is not, so a
+        string-routed unit is keyed on a digest of the query.
+
+        The query rather than the folded string, for two reasons. Two strings
+        that clean to one query are one fetch, so they are one unit. And - the
+        reason this changed - a cleaner change alters the query and therefore
+        invalidates the unit on its own. Digesting the folded string made a
+        cleaner change invisible to the skip rule: after the trailing period was
+        folded, a re-run skipped all 200 units as complete against queries the
+        cleaner had stopped emitting.
+
+        The consequence is that only one string in a query group fetches. The
+        others still get their own ``LabelDrugKey`` rows, written by the skip
+        path in ``pipeline.ingest_unit``, because the FAERS string is the join
+        key back to the signal table and a lookup on it has to resolve.
         """
         if self.ingredient_rxcui is not None:
             return f"rxcui:{self.ingredient_rxcui}"
-        digest = hashlib.sha256(self.folded_string.encode("utf-8")).hexdigest()
+        digest = hashlib.sha256(self.query.encode("utf-8")).hexdigest()
         return f"str:{digest[:24]}"
 
 
-def signal_root(settings: Settings | None = None) -> Path:
-    """Where the signal build writes its scored pairs."""
-    settings = settings or get_settings()
-    return settings.data_dir / "parquet" / "signal"
-
-
 def latest_run_id(settings: Settings | None = None) -> str | None:
-    """The most recent run partition, or None when none exist."""
-    root = signal_root(settings)
-    if not root.is_dir():
-        return None
-    partitions = sorted(p.name.removeprefix("run_id=") for p in root.glob("run_id=*"))
-    return partitions[-1] if partitions else None
+    """The most recent run partition, or None when none exist.
+
+    Delegates. The partition layout belongs to ``analytics.signals``, which
+    writes it; this module only asks that one which run is newest.
+    """
+    return signals.latest_run(settings)
 
 
-def _partition(run_id: str | None, settings: Settings | None) -> Path:
-    """The partition for ``run_id``, or raise naming exactly what is missing.
+def _describe_contents(root: Path) -> str:
+    """What ``root`` actually holds, phrased so it attributes no cause.
+
+    Every entry is listed, files included. A root holding strays and no
+    partition must not be described as empty.
+
+    Listing can itself fail. This is called while reporting a read that already
+    failed, and whatever broke the read can break the listing too, so a failure
+    here degrades the description rather than replacing the error being
+    reported.
+    """
+    try:
+        present = sorted(path.name for path in root.iterdir())
+    except OSError:
+        return "its contents could not be listed"
+    if not present:
+        return "it is empty"
+    if len(present) <= 10:
+        return f"it holds {present}"
+    return f"it holds {len(present)} entries, first 10: {present[:10]}"
+
+
+def _resolve_run(run_id: str | None, settings: Settings | None) -> str:
+    """The run to read, or raise naming exactly what is missing.
 
     Raising rather than returning an empty frame is the whole point. The corpus
     is rebuilt from scratch periodically, and during a rebuild this directory
     does not exist. A run that quietly produced zero units would look identical
     to a run that correctly found no flagged strings, and the measured N would
     be recorded as 0 in an artifact.
+
+    Returns a run id rather than a path: the path is built by whoever owns the
+    layout, and that is not this module.
     """
-    root = signal_root(settings)
+    root = signals.signal_root(settings)
     if not root.is_dir():
         message = (
             f"the signal table does not exist at {root}. The corpus has not been "
@@ -131,13 +166,13 @@ def _partition(run_id: str | None, settings: Settings | None) -> Path:
         raise SignalScopeError(message)
     resolved = run_id or latest_run_id(settings)
     if resolved is None:
-        message = f"{root} exists but holds no run partitions; the signal build wrote nothing"
+        message = (
+            f"no signal run partition under {root}; {_describe_contents(root)}. "
+            "This does not distinguish a build that wrote nothing from a read "
+            "of the wrong path."
+        )
         raise SignalScopeError(message)
-    partition = root / f"run_id={resolved}"
-    if not partition.is_dir() or not any(partition.glob("*.parquet")):
-        message = f"signal run {resolved!r} has no parquet under {partition}"
-        raise SignalScopeError(message)
-    return partition
+    return resolved
 
 
 def flagged_pair_counts(
@@ -156,11 +191,21 @@ def flagged_pair_counts(
     minimum cell count, and a future run with different data need not have that
     coincidence. It must never be described as a filter that removed anything.
     """
-    partition = _partition(run_id, settings)
-    frame = pl.read_parquet(partition / "*.parquet")
+    resolved = _resolve_run(run_id, settings)
+    root = signals.signal_root(settings)
+    try:
+        frame = signals.read_run(resolved, settings)
+    except (OSError, pl.exceptions.PolarsError) as exc:
+        # Two distinct failures, one message. read_run raises FileNotFoundError
+        # for an absent partition; polars raises ComputeError, which is not an
+        # OSError, for a partition that exists and holds no parquet. Both are
+        # caught so select raises one exception type whatever went wrong, and
+        # the original is kept as __cause__ rather than summarised away.
+        message = f"could not read signal run {resolved!r} under {root}; {_describe_contents(root)}"
+        raise SignalScopeError(message) from exc
     missing = {"drug", "flag_ror_prr_bcpnn", "insufficient"} - set(frame.columns)
     if missing:
-        message = f"signal parquet at {partition} lacks {sorted(missing)}"
+        message = f"signal run {resolved!r} under {root} lacks {sorted(missing)}"
         raise SignalScopeError(message)
     return (
         frame.filter(pl.col("flag_ror_prr_bcpnn") & ~pl.col("insufficient"))
@@ -255,9 +300,10 @@ def clean_query(folded_string: str) -> str:
 
     Deterministic and conservative: parenthetical asides are dropped, then
     trailing dose, strength, form and release tokens are peeled off one at a
-    time until a token that is not one of those is reached. Nothing in the
-    interior is touched, and the first token is never removed, so a string that
-    is all droppable tokens still yields a query rather than an empty string.
+    time until a token that is not one of those is reached, and finally a
+    trailing period is folded. Nothing in the interior is touched, and the first
+    token is never removed, so a string that is all droppable tokens still
+    yields a query rather than an empty string.
 
     This is a name-shortener, not a normalizer. It has no vocabulary and cannot
     know that HCL is a salt or that a word is a misspelling. Strings it gets
@@ -270,7 +316,25 @@ def clean_query(folded_string: str) -> str:
         return ""
     while len(tokens) > 1 and _is_droppable(tokens[-1]):
         tokens.pop()
-    return " ".join(tokens)
+    query = " ".join(tokens)
+    # openFDA folds a trailing period server-side. In the P05 run 30 of the 200
+    # selected strings were period-suffixed, every one had a bare twin in the
+    # same selection, and every pair returned an identical non-empty document
+    # set - a full request set spent per twin for labels already held. Folding
+    # it here makes the twin a cache hit instead of a second fetch.
+    #
+    # rstrip drops a run of periods, not one. Nothing in the flagged population
+    # needs that: all 30,549 strings end in at most a single period, and none
+    # carries an interior one. It is used because a hypothetical "X.." should
+    # fold the same way openFDA would fold it, not because the count was
+    # assumed.
+    #
+    # The strip is on the joined query, never on a token, so a decimal strength
+    # is untouched. Adding "." to _PUNCTUATION would break _NUMERIC on "0.5MG".
+    # "or query" keeps the documented invariant that a string of only droppable
+    # tokens still yields a query: a folded string of just "." would otherwise
+    # become empty and be recorded as a cleaner error.
+    return query.rstrip(".") or query
 
 
 def load_overrides(path: Path | None = None) -> dict[str, str]:

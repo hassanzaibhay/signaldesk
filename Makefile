@@ -2,8 +2,10 @@ DC ?= docker compose
 EXEC := $(DC) exec -T web
 
 # The container has no .git - the application does not read the working
-# tree - so the commit is resolved here and passed in, and every run
-# artifact records the code it was produced by.
+# tree - so the commit is resolved here and passed in on the targets that
+# record it. Only the signals targets use EXEC_SHA. The ingest targets pass
+# no sha and their run artifacts record none, so an ingest artifact cannot be
+# traced to a commit; commit before running one. Tracked as a followup.
 CODE_SHA := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 # docker compose exec takes its flags before the service name.
 EXEC_SHA := $(DC) exec -T -e SIGNALDESK_CODE_SHA=$(CODE_SHA) web
@@ -12,7 +14,8 @@ EXEC_SHA := $(DC) exec -T -e SIGNALDESK_CODE_SHA=$(CODE_SHA) web
 
 .PHONY: help bootstrap up up-dev down restart logs ps shell dbshell \
         migrate makemigrations superuser fmt lint type hygiene test test-fast cov \
-        ingest-faers ingest-labels ingest-ctgov ingest-pubmed normalize-drugs \
+        ingest-faers ingest-labels ingest-labels-check-key ingest-ctgov ingest-pubmed \
+        normalize-drugs \
         build-signals signals-mgps-diagnostic signals-artifact build-index record-cassettes \
         eval-retrieval eval-labeledness eval-briefs eval-signals eval-all \
         demo-data clean reset prune df
@@ -87,6 +90,9 @@ ingest-faers:  ## Ingest FAERS quarters (ARGS="--from 2012Q4 --to 2026Q1")
 
 ingest-labels:  ## Ingest openFDA SPL drug labels
 	$(EXEC) signaldesk ingest labels $(ARGS)
+
+ingest-labels-check-key:  ## Prove the openFDA key works, in the container that will run the ingest
+	$(EXEC) signaldesk ingest labels-check-key
 
 ingest-ctgov:  ## Ingest ClinicalTrials.gov studies with results
 	$(EXEC) signaldesk ingest ctgov $(ARGS)
