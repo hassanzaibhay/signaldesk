@@ -95,7 +95,7 @@ def test_the_guard_short_circuits_main(
     assert capsys.readouterr().out == "hygiene: nope\n"
 
 
-class TestNothingSitsUntrackedUnderEvalsHistory:
+class TestNothingSitsUntrackedUnderTheArtifactRoots:
     """The third rule, and the reason it has to be a rule.
 
     Rules 1 and 2 read `git ls-files`, so an artifact that is written and never
@@ -103,6 +103,13 @@ class TestNothingSitsUntrackedUnderEvalsHistory:
     including the signal run the label pipeline scoped from and the run whose
     cached bytes the clean run replayed. "Remember to commit the artifact" is a
     human remembering, which is the shape this rule replaces.
+
+    evals/golden/ was added to the same rule for a different reason. A gold set
+    is hand-curated: the labeledness set is a day of annotation and cannot be
+    produced again, on a machine that has already been rebuilt once mid-project.
+    Untracked fires and tracked-and-modified does not, so the cost of the rule is
+    committing the file at the end of each annotation session, which is the habit
+    it exists to enforce.
     """
 
     def test_an_untracked_artifact_fails_the_whole_repository_run(
@@ -181,5 +188,64 @@ class TestNothingSitsUntrackedUnderEvalsHistory:
 
         assert hygiene.untracked_artifacts() == ["evals/history/stray.json"]
         assert seen == [
-            ["ls-files", "-z", "--others", "--exclude-standard", "--", "evals/history/"]
+            [
+                "ls-files",
+                "-z",
+                "--others",
+                "--exclude-standard",
+                "--",
+                "evals/history/",
+                "evals/golden/",
+            ]
         ]
+
+    def test_an_untracked_gold_set_fails_the_whole_repository_run(
+        self,
+        hygiene: ModuleType,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A gold set is the one artifact here that cannot be regenerated.
+
+        WHAT WOULD KEEP THIS GREEN WHILE THE PROPERTY BROKE, stated because it is
+        the useful half: this test stubs `untracked_artifacts`, so it pins the
+        reporting and not the query. Two regressions slip past it and each is
+        covered by a different test in this class --
+        `test_the_query_asks_git_for_untracked_and_unignored_paths` pins that both
+        roots are actually passed to git, and `test_the_artifact_roots_are_both
+        _covered` pins the constant. A third regression is covered by neither and
+        is not closable here: adding `evals/golden/` to .gitignore or
+        .git/info/exclude makes `--exclude-standard` suppress the file, and the
+        gate goes green while the gold set goes untracked. Nothing detects that
+        short of forbidding the ignore entry, which would break the local-only
+        planning files the same mechanism carries.
+        """
+        monkeypatch.setattr(hygiene, "repo_root", lambda: Path("/repo"))
+        monkeypatch.setattr(hygiene, "tracked_files", list)
+        monkeypatch.setattr(
+            hygiene,
+            "untracked_artifacts",
+            lambda: ["evals/golden/labeledness_v1.jsonl"],
+        )
+
+        assert hygiene.main([]) == 1
+        out = capsys.readouterr().out
+        assert "evals/golden/labeledness_v1.jsonl" in out
+        assert "commit it or delete it" in out
+        assert "cannot be produced again" in out
+
+    def test_the_artifact_roots_are_both_covered(self, hygiene: ModuleType) -> None:
+        """The constant is the rule. An accidental narrowing shows up here first."""
+        assert hygiene.ARTIFACT_ROOTS == ("evals/history/", "evals/golden/")
+
+    def test_an_empty_gold_directory_cannot_be_distinguished_from_a_deleted_one(
+        self, hygiene: ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Documented limit, asserted so it stays documented.
+
+        The rule sees untracked files. It cannot see a gold set that was never
+        written, or one that was committed and then deleted and committed again.
+        Both present as a clean run.
+        """
+        monkeypatch.setattr(hygiene, "run_git", lambda _args: "")
+        assert hygiene.untracked_artifacts() == []

@@ -772,6 +772,134 @@ def evals_run(
     _owned_by("P09 to P16", f"the {suite} evaluation suite")
 
 
+@evals_app.command("annotate-draw")
+def evals_annotate_draw(
+    seed: Annotated[str, typer.Option("--seed", help="Decimal seed. Committed with the sample.")],
+    spl_artifact: Annotated[
+        Path,
+        typer.Option("--spl-artifact", help="Committed SPL ingest artifact carrying page_cap."),
+    ],
+    signal_artifact: Annotated[
+        Path,
+        typer.Option("--signal-artifact", help="Committed signal artifact documenting the run."),
+    ],
+    guideline_version: Annotated[
+        str, typer.Option("--guideline-version", help="Version of the approved guideline.")
+    ] = "v1",
+    history_dir: Annotated[
+        Path, typer.Option("--history-dir", help="Where the sample manifest is written.")
+    ] = Path("evals/history"),
+) -> None:
+    """Draw the labeledness gold-set sample and write its committed manifest.
+
+    Runs once. The manifest holds the seed, both source artifacts, the frame
+    counts and every byte of section text the annotator will see, so the frame
+    cannot be adjusted after the draw and the sample is reproducible from the
+    repository.
+
+    No model participates. The annotation harness does not import this module,
+    which is what lets it run with no database.
+    """
+    _setup_django()
+    from signaldesk.evals.labeledness.draw import draw, normalise_seed
+
+    # Both artifacts are paths and both must exist. They were asymmetric in an
+    # earlier revision - one a path, one a bare filename - which made a copied
+    # invocation fail on whichever argument was given the other's form.
+    for name, path in (("--spl-artifact", spl_artifact), ("--signal-artifact", signal_artifact)):
+        if not path.is_file():
+            typer.echo(f"{name}: no such file: {path}", err=True)
+            raise typer.Exit(code=1)
+
+    result = draw(
+        seed=normalise_seed(seed),
+        guideline_version=guideline_version,
+        spl_artifact=spl_artifact,
+        signal_artifact=signal_artifact.name,
+        history_dir=history_dir,
+    )
+    counts = result.manifest.frame
+    typer.echo(f"Wrote {result.path}")
+    typer.echo(
+        f"  frame: {counts.documents_eligible} documents, {counts.strings_eligible} strings, "
+        f"{counts.query_groups_eligible} query groups, {result.manifest.frame_pairs} pairs"
+    )
+    typer.echo(
+        f"  excluded: {counts.strings_capped} page-capped strings, "
+        f"{counts.strings_unknown} with page_cap unknown, "
+        f"{counts.documents_without_primary_section} documents with no adverse-reactions text"
+    )
+    typer.echo(
+        f"  drew: {len(result.manifest.screens)} screens "
+        f"({len(result.manifest.reserve)} reserve, not to be annotated by default)"
+    )
+    typer.echo("Commit the manifest before annotating; make hygiene fails while it is untracked.")
+
+
+@evals_app.command("annotate")
+def evals_annotate(
+    manifest_path: Annotated[
+        Path, typer.Option("--manifest", help="Committed sample manifest to annotate.")
+    ],
+    gold_path: Annotated[Path, typer.Option("--gold", help="Append-only gold set.")] = Path(
+        "evals/golden/labeledness_v1.jsonl"
+    ),
+    past_checkpoint: Annotated[
+        bool,
+        typer.Option("--past-checkpoint", help="Continue past the screen-50 review."),
+    ] = False,
+) -> None:
+    """Annotate the labeledness gold set, one pair at a time.
+
+    Reads the manifest and nothing else: no database, no network, no model. Every
+    verdict is flushed and fsynced before the next screen renders, so a crash
+    loses at most the screen in progress, and the session resumes at the first
+    screen with no live verdict.
+    """
+    from signaldesk.evals.labeledness.checkpoint import render as render_checkpoint
+    from signaldesk.evals.labeledness.checkpoint import summarise
+    from signaldesk.evals.labeledness.session import TerminalKeyReader, load_session, run_session
+
+    manifest, store = load_session(manifest_path, gold_path)
+    reader = TerminalKeyReader()
+    if not reader.interactive:
+        typer.echo(
+            "stdin is not a terminal, so verdicts need Enter after the key. "
+            "Run without -T for single-keypress input."
+        )
+
+    def _write(frame: str) -> None:
+        typer.echo(frame)
+
+    result = run_session(manifest, store, reader, write=_write, past_checkpoint=past_checkpoint)
+    typer.echo(f"{result.answered} answered, {result.undone} retracted this session.")
+    if result.reached_checkpoint:
+        live = list(store.resolved().values())
+        typer.echo(render_checkpoint(summarise(live, manifest), manifest))
+    if result.finished:
+        typer.echo("Every screen in the schedule has a verdict.")
+    typer.echo(f"Commit {gold_path} before you stop; make hygiene fails while it is untracked.")
+
+
+@evals_app.command("annotate-checkpoint")
+def evals_annotate_checkpoint(
+    manifest_path: Annotated[
+        Path, typer.Option("--manifest", help="The manifest the gold set was annotated against.")
+    ],
+    gold_path: Annotated[Path, typer.Option("--gold", help="Append-only gold set.")] = Path(
+        "evals/golden/labeledness_v1.jsonl"
+    ),
+) -> None:
+    """Report measured annotation pace and verdict mix without annotating."""
+    from signaldesk.evals.labeledness.checkpoint import render as render_checkpoint
+    from signaldesk.evals.labeledness.checkpoint import summarise
+    from signaldesk.evals.labeledness.session import load_session
+
+    manifest, store = load_session(manifest_path, gold_path)
+    live = list(store.resolved().values())
+    typer.echo(render_checkpoint(summarise(live, manifest), manifest))
+
+
 @evals_app.command("record-cassettes")
 def evals_record_cassettes() -> None:
     """Record model responses so continuous integration can replay them offline.

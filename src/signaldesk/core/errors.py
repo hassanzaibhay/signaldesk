@@ -46,3 +46,12 @@ class StructuredOutputError(ProviderError):
 
 class GuardrailViolation(SignalDeskError):  # noqa: N818 - the name is the contract
     """Generated content breached a guardrail and must not be surfaced."""
+
+
+class AnnotationError(SignalDeskError):
+    """A gold-set draw, manifest or annotation store is malformed.
+
+    Raised rather than defaulted throughout the annotation path. A gold set is
+    the one artifact in this project that cannot be regenerated, so a store that
+    cannot be read has to stop the run rather than start a fresh one.
+    """

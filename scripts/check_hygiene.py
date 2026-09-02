@@ -15,15 +15,18 @@ Three rules, all mechanical:
    commit, not in the working tree, and a stray trailer in a file confuses tools
    that parse trailers out of message bodies.
 
-3. Nothing sits untracked under evals/history/. CLAUDE.md requires every
-   published number to trace to a committed artifact there, and rules 1 and 2
-   read `git ls-files`, so an artifact that is never staged is never checked and
-   never noticed. Six accumulated that way, including the run backing the figures
-   quoted for this pipeline. An artifact deliberately not to be committed - a run
-   that measured nothing, a warm re-run whose figures are wrong - gets deleted,
-   which is what happened to two of them. It does not get left sitting stageable,
-   because a directory a reader believes is the provenance record is worse when
-   it is silently partial than when it is visibly wrong.
+3. Nothing sits untracked under evals/history/ or evals/golden/. CLAUDE.md
+   requires every published number to trace to a committed artifact there, and
+   rules 1 and 2 read `git ls-files`, so an artifact that is never staged is
+   never checked and never noticed. Six accumulated that way, including the run
+   backing the figures quoted for this pipeline. An artifact deliberately not to
+   be committed - a run that measured nothing, a warm re-run whose figures are
+   wrong - gets deleted, which is what happened to two of them. It does not get
+   left sitting stageable, because a directory a reader believes is the
+   provenance record is worse when it is silently partial than when it is
+   visibly wrong. evals/golden/ is covered by the same rule for a different
+   reason: a gold set is hand-curated and cannot be regenerated, so an
+   uncommitted one is not a missing number but lost work.
 
 Data fixtures are exempt: real source data legitimately contains non-ASCII
 characters, and rewriting it would corrupt the input the pipeline is measured on.
@@ -123,20 +126,28 @@ def tracked_files() -> list[str]:
     return [name for name in output.split("\0") if name]
 
 
-#: The directory whose contents must all be committed.
-ARTIFACT_ROOT = "evals/history/"
+#: The directories whose contents must all be committed.
+#:
+#: ``evals/history/`` is the provenance record every published number traces to.
+#: ``evals/golden/`` holds the hand-curated gold sets, which are the one class of
+#: artifact here that cannot be regenerated at all: a labeledness gold set is a
+#: day of annotation, and the machine it was produced on has already been rebuilt
+#: once mid-project. Untracked fires; tracked-and-modified does not, so the cost
+#: of the rule is committing the file at the end of each annotation session,
+#: which is the habit it is meant to enforce.
+ARTIFACT_ROOTS = ("evals/history/", "evals/golden/")
 
 
 def untracked_artifacts() -> list[str]:
-    """Files under ``evals/history/`` that git is neither tracking nor ignoring.
+    """Files under :data:`ARTIFACT_ROOTS` that git neither tracks nor ignores.
 
     ``--others`` lists untracked paths and ``--exclude-standard`` applies the
     ignore rules, so a path deliberately ignored is not reported. Nothing under
-    this directory is ignored today, which is the point: an artifact written
+    these directories is ignored today, which is the point: an artifact written
     there is stageable, invisible to every other check here, and one ``git add``
     away from being published without ever having been inspected.
     """
-    output = run_git(["ls-files", "-z", "--others", "--exclude-standard", "--", ARTIFACT_ROOT])
+    output = run_git(["ls-files", "-z", "--others", "--exclude-standard", "--", *ARTIFACT_ROOTS])
     return sorted(name for name in output.split("\0") if name)
 
 
@@ -241,9 +252,7 @@ def main(argv: Sequence[str]) -> int:
     # make a targeted check unusable.
     stray = [] if explicit else untracked_artifacts()
     for name in stray:
-        violations.append(
-            Violation(name, 1, 1, f"untracked file under {ARTIFACT_ROOT}; commit it or delete it")
-        )
+        violations.append(Violation(name, 1, 1, "untracked artifact; commit it or delete it"))
 
     if not violations:
         sys.stdout.write(f"hygiene: {len(names)} files checked, no violations\n")
@@ -257,11 +266,13 @@ def main(argv: Sequence[str]) -> int:
         "ellipsis characters with '...'.\n"
     )
     if stray:
+        roots = " and ".join(ARTIFACT_ROOTS)
         sys.stdout.write(
-            f"\nEvery file under {ARTIFACT_ROOT} must be committed, because that is\n"
-            "where published numbers are traced to and the other checks here only\n"
-            "see tracked files. A run that measured nothing, or whose figures are\n"
-            "known wrong, gets deleted rather than left untracked.\n"
+            f"\nEvery file under {roots} must be committed. That is where published\n"
+            "numbers are traced to and where the hand-curated gold sets live, and the\n"
+            "other checks here only see tracked files. A run that measured nothing, or\n"
+            "whose figures are known wrong, gets deleted rather than left untracked.\n"
+            "A gold set is never deleted; it cannot be produced again.\n"
         )
     return 1
 

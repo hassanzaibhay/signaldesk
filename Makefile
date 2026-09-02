@@ -17,6 +17,7 @@ EXEC_SHA := $(DC) exec -T -e SIGNALDESK_CODE_SHA=$(CODE_SHA) web
         ingest-faers ingest-labels ingest-labels-check-key ingest-ctgov ingest-pubmed \
         normalize-drugs \
         build-signals signals-mgps-diagnostic signals-artifact build-index record-cassettes \
+        annotate-draw annotate annotate-checkpoint \
         eval-retrieval eval-labeledness eval-briefs eval-signals eval-all \
         demo-data clean reset prune df
 
@@ -117,6 +118,15 @@ build-index:  ## Chunk, embed, and build the sparse and dense indexes
 
 record-cassettes:  ## Record model responses for offline CI
 	$(DC) exec web signaldesk evals record-cassettes
+
+annotate-draw:  ## Draw the labeledness gold-set sample (ARGS="--seed N --spl-artifact ... --signal-artifact ...")
+	$(EXEC) signaldesk evals annotate-draw $(ARGS)
+
+annotate:  ## Annotate the labeledness gold set (needs a tty, so no -T)
+	$(DC) exec web signaldesk evals annotate $(ARGS)
+
+annotate-checkpoint:  ## Report measured annotation pace and verdict mix
+	$(EXEC) signaldesk evals annotate-checkpoint $(ARGS)
 
 eval-retrieval:  ## Retrieval suite
 	$(EXEC) signaldesk evals run retrieval
