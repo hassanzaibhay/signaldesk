@@ -70,13 +70,31 @@ it, labeledness classification against a hand-annotated gold set, citation
 precision, judge agreement with a human annotator, and latency and cost per
 query.
 
-### Known gaps in provenance
+## Not built yet
 
-Ingest run artifacts do not record the code sha that produced them; analytics
-artifacts do. Until that is fixed, an ingest artifact cannot be traced to a
-commit from the artifact alone, and the guarantee that every published number
-traces to a committed artifact rests on the ingest being run from a clean tree
-rather than on anything the artifact records.
+Listed because a reader should not have to infer what is missing from what is
+absent.
+
+Provenance and correctness gaps in what does exist:
+
+- Ingest run artifacts do not record the code sha that produced them; analytics
+  artifacts do. An ingest artifact therefore cannot be traced to a commit from
+  the artifact alone, and the tracing guarantee above rests on the ingest having
+  been run from a clean tree rather than on anything the artifact records.
+- The label ingest artifact does not record which signal run its scope was
+  selected from. The link between the drug strings it fetched and the signal run
+  that flagged them rests on there having been one run partition on disk when it
+  executed.
+- A `page_cap` of `null` in a label ingest artifact means truncation was never
+  measured, not that it did not occur. Any consumer filtering out page-capped
+  drug strings has to exclude `null` as well as `true`; nothing currently
+  enforces that.
+
+Features not implemented:
+
+- Evidence brief pipeline, with citation evaluation and judge validation.
+- The bounded five-tool agent and its trace persistence.
+- The evaluation dashboard, its nightly workflow, and history rendering.
 
 ## Data sources and licensing
 
