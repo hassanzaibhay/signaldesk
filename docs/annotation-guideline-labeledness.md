@@ -54,9 +54,22 @@ The event is a MedDRA Preferred Term as it arrives in the public FDA extract.
 Labels are not written in MedDRA, so the PT will usually not appear verbatim in
 the text. That is expected and is the reason sections 4 and 5 exist.
 
-The document is one SPL, drawn uniformly at random from the drug's eligible
-documents. Eligible means it carries adverse-reactions text and is reached from
-a drug string whose label fetch was not truncated by the openFDA page cap.
+The document is one SPL, drawn uniformly at random, **independently for each
+pair**, from the eligible documents of that drug string's query group. Eligible
+means it carries adverse-reactions text and is reached from a drug string whose
+label fetch was not truncated by the openFDA page cap.
+
+Two screens on the same drug may therefore show different label versions, and
+that is deliberate. Drawing once per drug would fix one manufacturer's label for
+every question asked about that drug; drawing once per pair samples across the
+versions instead, which is what makes the paragraph in section 1 about
+cross-manufacturer variance true rather than aspirational. In the committed
+sample, 300 pairs over 128 query groups drew 228 distinct documents.
+
+The two presentations of a repeat are the exception, and they have to be: they
+share a pair, so they share a document, byte for byte. A repeat that showed a
+different label version would be a different question, and the agreement figure
+would measure nothing.
 
 ---
 

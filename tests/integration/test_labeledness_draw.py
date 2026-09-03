@@ -396,3 +396,125 @@ class TestTheFrameReportsExclusionReasons:
         assert frame.excluded_strings["IBUPROFEN"] is CapState.CAPPED
         assert frame.excluded_strings["ORPHANDRUG"] is CapState.UNKNOWN
         assert frame.excluded_strings["ORPHANDRUG"] is not CapState.CLEAN
+
+
+class TestTheDocumentIsDrawnPerPair:
+    """The rule the draw implements, pinned in both directions.
+
+    An approved design statement said one document is drawn per drug. The code
+    draws one per pair, from a per-group candidate pool. The divergence sat in a
+    committed manifest until it was found by cross-checking two counts in a
+    report; nothing in this suite related the group count to the document count.
+    Per-pair is the kept behaviour, so it is now asserted rather than assumed.
+    """
+
+    def test_distinct_documents_may_exceed_distinct_query_groups(
+        self, drawn: tuple[Path, Settings]
+    ) -> None:
+        """Per-pair selection is observable as documents outnumbering groups.
+
+        Under a per-group rule the two counts would be equal by construction,
+        because a group would draw once and every screen on it would reuse that
+        draw. The strict inequality is what distinguishes the two rules from
+        outside the code.
+
+        WHAT WOULD KEEP THIS GREEN WHILE THE PROPERTY BROKE: nothing subtle, but
+        it is only meaningful because this fixture gives each group more than one
+        eligible document. If the corpus fixture were narrowed so every group had
+        exactly one, the counts would coincide under either rule and this
+        assertion would pass without discriminating. The eligible-documents-per-
+        group assertion below guards that.
+        """
+        path, _settings = drawn
+        manifest = read_manifest(path)
+        groups = {screen.query for screen in manifest.screens}
+        documents = {screen.set_id for screen in manifest.screens}
+
+        # The fixture has to be able to tell the two rules apart at all.
+        per_group: dict[str, set[str]] = {}
+        for screen in manifest.screens:
+            per_group.setdefault(screen.query, set()).add(screen.set_id)
+        assert max(len(v) for v in per_group.values()) > 1, (
+            "fixture gives every group one document; the rules are indistinguishable"
+        )
+
+        assert len(documents) > len(groups)
+
+    def test_two_screens_on_one_group_can_carry_different_documents(
+        self, drawn: tuple[Path, Settings]
+    ) -> None:
+        """The same claim stated per group rather than in aggregate."""
+        path, _settings = drawn
+        manifest = read_manifest(path)
+        per_group: dict[str, set[str]] = {}
+        for screen in manifest.screens:
+            per_group.setdefault(screen.query, set()).add(screen.set_id)
+        assert sum(1 for docs in per_group.values() if len(docs) > 1) > 0
+
+    def test_every_repeat_holds_its_document_and_text_constant(
+        self, drawn: tuple[Path, Settings]
+    ) -> None:
+        """The load-bearing one. The consistency figure depends on it entirely.
+
+        A repeat that showed a different label version would be a different
+        question, and the intra-annotator agreement number would be measuring two
+        questions rather than one. This holds today by construction: the document
+        lookup is keyed on ``pair_id`` and both presentations of a repeat share
+        that key.
+
+        WHAT WOULD HAVE TO REGRESS FOR THIS TO STAY GREEN WHILE THE PROPERTY
+        BREAKS, which is the question worth answering because the current safety
+        is one dictionary key wide:
+
+        * Re-keyed from ``pair_id`` to the QUERY GROUP: this test STAYS GREEN, and
+          correctly so - the group is also constant across a repeat's two
+          presentations, so the documents would still match. That re-key is
+          caught by `test_distinct_documents_may_exceed_distinct_query_groups`
+          instead, which goes red. The two tests are jointly load-bearing and
+          neither covers the other.
+        * Re-keyed to the DRUG STRING: this test goes RED, but only via repeats
+          presented under a sibling string, since those are the presentations
+          whose string differs from the original's. The sibling assertion below
+          is therefore part of this test rather than a separate concern - without
+          at least one sibling repeat in the schedule, a drug-string re-key would
+          slip through green.
+        * The choice moved inline into the screen-building loop, so that
+          ``rng.choice`` runs once per placement rather than once per pair: this
+          test goes RED. That is the most likely accidental form of the defect.
+        """
+        path, _settings = drawn
+        manifest = read_manifest(path)
+        by_id = {screen.screen_id: screen for screen in manifest.screens}
+        repeats = [screen for screen in manifest.screens if screen.is_repeat]
+        assert repeats
+
+        sibling_repeats = 0
+        for screen in repeats:
+            assert screen.repeat_of is not None
+            original = by_id[screen.repeat_of]
+            assert original.pair_id == screen.pair_id
+            assert original.set_id == screen.set_id
+            assert original.document_id == screen.document_id
+            assert original.pt == screen.pt
+            assert original.sections == screen.sections
+            assert original.protocol is screen.protocol
+            if original.drug_string != screen.drug_string:
+                sibling_repeats += 1
+
+        # Without this, a drug-string re-key would leave the loop above green.
+        assert sibling_repeats > 0, (
+            "no repeat was presented under a sibling string, so this test cannot "
+            "detect the document lookup being re-keyed on the drug string"
+        )
+
+    def test_the_reserve_stratum_uses_the_same_per_pair_rule(
+        self, drawn: tuple[Path, Settings]
+    ) -> None:
+        """Stated because the reserve is drawn at a second call site."""
+        path, _settings = drawn
+        manifest = read_manifest(path)
+        assert manifest.reserve
+        per_group: dict[str, set[str]] = {}
+        for screen in manifest.reserve:
+            per_group.setdefault(screen.query, set()).add(screen.set_id)
+        assert len({screen.set_id for screen in manifest.reserve}) >= len(per_group)
