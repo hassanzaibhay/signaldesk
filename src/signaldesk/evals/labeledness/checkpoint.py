@@ -12,9 +12,23 @@ from __future__ import annotations
 import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Final
 
 from signaldesk.evals.labeledness.manifest import Protocol, SampleManifest
 from signaldesk.evals.labeledness.store import Record, Verdict
+
+#: A screen answered faster than this cannot have had the protocol run on it.
+#: Guideline section 6 requires the verbatim term plus each stemmed content word
+#: searched across every present section, which is at minimum two interactions.
+IMPLAUSIBLE_SECONDS: Final = 5.0
+
+#: Session-level thresholds. Both are FLAGS, never blocks. A hard floor buys
+#: better-looking telemetry and the same defect, because waiting out a timer is
+#: easier than reading a label; a line saying how many screens were implausibly
+#: fast is harder to ignore and cannot be satisfied without actually slowing
+#: down.
+SLOW_MEDIAN_SECONDS: Final = 20.0
+IMPLAUSIBLE_SHARE: Final = 0.10
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +49,28 @@ class Checkpoint:
     #: shown, and where it did not. None when no manifest was supplied.
     explicit_verbatim: int | None = None
     explicit_by_synonym: int | None = None
+    #: Screens answered under IMPLAUSIBLE_SECONDS, and whether the session-level
+    #: thresholds tripped. Counted, not just tested, because "a threshold tripped"
+    #: is easy to wave away and "43 of 50 screens were under 5 seconds" is not.
+    implausible_screens: int = 0
+    #: The guideline versions the records were actually MADE under, in first-seen
+    #: order. Not the manifest's version, which is the version the sample was
+    #: DRAWN under; after an amendment the two differ and reporting the manifest's
+    #: would misattribute every verdict.
+    guideline_versions: tuple[str, ...] = ()
+
+    @property
+    def implausible_share(self) -> float:
+        return self.implausible_screens / self.annotated if self.annotated else 0.0
+
+    @property
+    def pace_is_implausible(self) -> bool:
+        """True when the recorded pace cannot be the protocol running."""
+        if not self.annotated:
+            return False
+        return (
+            self.median_seconds < SLOW_MEDIAN_SECONDS or self.implausible_share > IMPLAUSIBLE_SHARE
+        )
 
 
 def explicit_split(manifest: SampleManifest, records: Sequence[Record]) -> tuple[int, int]:
@@ -100,6 +136,11 @@ def summarise(records: Sequence[Record], manifest: SampleManifest | None = None)
     ]
     median = statistics.median(seconds) if seconds else 0.0
     verbatim, synonym = explicit_split(manifest, verdicts) if manifest else (None, None)
+    implausible = sum(1 for value in seconds if value < IMPLAUSIBLE_SECONDS)
+    versions: list[str] = []
+    for record in verdicts:
+        if record.guideline_version not in versions:
+            versions.append(record.guideline_version)
     return Checkpoint(
         annotated=len(verdicts),
         median_seconds=median,
@@ -113,6 +154,8 @@ def summarise(records: Sequence[Record], manifest: SampleManifest | None = None)
         projected_screens_per_hour=(3600.0 / median) if median > 0 else 0.0,
         explicit_verbatim=verbatim,
         explicit_by_synonym=synonym,
+        implausible_screens=implausible,
+        guideline_versions=tuple(versions),
     )
 
 
@@ -122,13 +165,16 @@ def render(checkpoint: Checkpoint, manifest: SampleManifest) -> str:
     lines = [
         "",
         f"Checkpoint: {checkpoint.annotated} screens annotated under guideline "
-        f"{manifest.guideline_version}.",
+        f"{'/'.join(checkpoint.guideline_versions) or manifest.guideline_version}"
+        f" (sample drawn under {manifest.guideline_version}).",
         "",
         "Pace, from recorded elapsed time and not from an estimate:",
         f"  median            {checkpoint.median_seconds:6.1f} s per screen",
         f"  90th percentile   {checkpoint.p90_seconds:6.1f} s per screen",
         f"  time spent        {checkpoint.total_minutes:6.1f} min",
         f"  implied rate      {checkpoint.projected_screens_per_hour:6.1f} screens per hour",
+        f"  under {IMPLAUSIBLE_SECONDS:.0f}s          {checkpoint.implausible_screens:6} of "
+        f"{checkpoint.annotated} screens ({checkpoint.implausible_share:.0%})",
         "",
         "Verdicts:",
         f"  l labelled, described       {checkpoint.verdict_counts['l']:4}",
@@ -152,6 +198,28 @@ def render(checkpoint: Checkpoint, manifest: SampleManifest) -> str:
             "Within l, derived after the fact and not by a keypress:",
             f"  the term appeared verbatim  {checkpoint.explicit_verbatim:4}",
             f"  named another way           {checkpoint.explicit_by_synonym:4}",
+        ]
+    if checkpoint.pace_is_implausible:
+        lines += [
+            "",
+            "  PACE IS IMPLAUSIBLE FOR THE READING PROTOCOL.",
+            f"    {checkpoint.implausible_screens} of {checkpoint.annotated} screens were "
+            f"answered in under {IMPLAUSIBLE_SECONDS:.0f} s "
+            f"({checkpoint.implausible_share:.0%}); median {checkpoint.median_seconds:.1f} s.",
+            f"    Section 6 cannot run in that time. Thresholds: median under "
+            f"{SLOW_MEDIAN_SECONDS:.0f} s, or more than {IMPLAUSIBLE_SHARE:.0%} under "
+            f"{IMPLAUSIBLE_SECONDS:.0f} s.",
+            "    This is a flag, not a block. Discarding the pass is a decision, not a",
+            "    consequence: retract with tombstones and the resume scan returns to the",
+            "    first screen with no live verdict.",
+        ]
+    if len(checkpoint.guideline_versions) > 1:
+        lines += [
+            "",
+            "  RECORDS SPAN MORE THAN ONE GUIDELINE VERSION: "
+            f"{', '.join(checkpoint.guideline_versions)}.",
+            "    They are not pooled by anything downstream. Re-annotate the older ones",
+            "    under the current version, or report them separately.",
         ]
     lines += [
         "",

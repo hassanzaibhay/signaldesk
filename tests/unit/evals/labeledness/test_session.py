@@ -9,7 +9,7 @@ import pytest
 from _builders import build_manifest, build_screen
 
 from signaldesk.core.errors import AnnotationError
-from signaldesk.evals.labeledness.manifest import SampleManifest
+from signaldesk.evals.labeledness.manifest import Protocol, SampleManifest
 from signaldesk.evals.labeledness.session import (
     CHECKPOINT_AT,
     MINIMUM_SCORABLE_RECORDS,
@@ -448,3 +448,194 @@ class TestUndoIsWithinTheSession:
 
         run_session(manifest, store, ScriptedKeys("zq"), write=lambda _: None, past_checkpoint=True)
         assert len(AnnotationStore(path).resolved()) == 1
+
+
+class TestTheRecordedGuidelineVersion:
+    """A record carries the version its verdict was made under.
+
+    The manifest carries the version the sample was DRAWN under. Conflating them
+    was a modelling error, and it made the guideline's own amendment procedure
+    unimplementable: the manifest is committed and must not be rewritten to claim
+    the sample was drawn against a document that did not exist at the time, so
+    without an override no amendment could ever reach a record.
+    """
+
+    def test_it_defaults_to_the_manifest(self, tmp_path: Path) -> None:
+        store = AnnotationStore(tmp_path / "gold.jsonl")
+        run_session(
+            _manifest(), store, ScriptedKeys("nq"), write=lambda _: None, past_checkpoint=True
+        )
+        assert store.resolved()["s0001"].guideline_version == "v1"
+
+    def test_an_override_reaches_every_new_record(self, tmp_path: Path) -> None:
+        store = AnnotationStore(tmp_path / "gold.jsonl")
+        run_session(
+            _manifest(),
+            store,
+            ScriptedKeys("nnq"),
+            write=lambda _: None,
+            past_checkpoint=True,
+            guideline_version="v2",
+        )
+        assert {r.guideline_version for r in store.resolved().values()} == {"v2"}
+
+    def test_a_tombstone_carries_the_version_that_retracted_it(self, tmp_path: Path) -> None:
+        store = AnnotationStore(tmp_path / "gold.jsonl")
+        run_session(
+            _manifest(),
+            store,
+            ScriptedKeys("nzq"),
+            write=lambda _: None,
+            past_checkpoint=True,
+            guideline_version="v2",
+        )
+        undos = [r for r in store.read_all() if r.kind == "undo"]
+        assert undos and all(r.guideline_version == "v2" for r in undos)
+
+    def test_records_written_under_an_older_version_stay_legible_as_that_version(
+        self, tmp_path: Path
+    ) -> None:
+        """The v1 pass is not rewritten by a v2 amendment.
+
+        Append-only means an earlier version stays on disk exactly as written.
+        A migration that rewrote old records to the current version would erase
+        the fact that they were made under a different rule, which is the one
+        thing the version field exists to preserve.
+        """
+        path = tmp_path / "gold.jsonl"
+        run_session(
+            _manifest(),
+            AnnotationStore(path),
+            ScriptedKeys("nn"),
+            write=lambda _: None,
+            past_checkpoint=True,
+        )
+        first = AnnotationStore(path).read_all()
+        assert {r.guideline_version for r in first} == {"v1"}
+
+        # Retract under v2, the way an amendment mid-project would.
+        store = AnnotationStore(path)
+        for record in first:
+            store.append(undo_record(screen_id=record.screen_id, guideline_version="v2"))
+
+        every = store.read_all()
+        assert store.resolved() == {}
+        verdicts = [r for r in every if r.kind == "verdict"]
+        undos = [r for r in every if r.kind == "undo"]
+        assert all(r.guideline_version == "v1" for r in verdicts), "v1 verdicts were rewritten"
+        assert all(r.guideline_version == "v2" for r in undos)
+
+
+class TestElapsedTimeSpansTheWholeScreen:
+    """The assertion the entire pace-flag mechanism rests on.
+
+    If ``elapsed_ms`` measured the gap between the last two keypresses rather
+    than render-to-verdict, a slowly-paged screen would read fast and a fast one
+    slow, every threshold in the checkpoint would become decorative, and nothing
+    would look wrong: the numbers would be plausible and simply be about
+    something else. It is the only failure route the pace flags cannot see,
+    because they consume the very figure that would be corrupted.
+
+    The clock here is driven by the key reader, so time advances on every
+    keypress. That is what makes the span observable: under the correct
+    implementation the elapsed time covers every navigation key, and under a
+    per-keypress reset it would equal one tick.
+    """
+
+    class TickingKeys:
+        """Keys that advance a clock, so a span can be told from an interval."""
+
+        def __init__(self, keys: str, tick: float, lines: list[str] | None = None) -> None:
+            self._keys: Iterator[str] = iter(keys)
+            self._lines: Iterator[str] = iter(lines or [])
+            self.tick = tick
+            self.now = 0.0
+
+        def read_key(self) -> str:
+            self.now += self.tick
+            return next(self._keys, "q")
+
+        def read_line(self, prompt: str) -> str:
+            return next(self._lines, "")
+
+        def clock(self) -> float:
+            return self.now
+
+    def _run(self, tmp_path: Path, manifest: SampleManifest) -> AnnotationStore:
+        store = AnnotationStore(tmp_path / "gold.jsonl")
+        # page down, section switch, search, then the verdict: four keys, and the
+        # elapsed time must cover all four rather than the last one.
+        keys = self.TickingKeys(" 2/n", tick=10.0, lines=["nausea"])
+        run_session(
+            manifest,
+            store,
+            keys,
+            write=lambda _: None,
+            past_checkpoint=True,
+            clock=keys.clock,
+        )
+        return store
+
+    def test_a_full_screen_records_render_to_verdict(self, tmp_path: Path) -> None:
+        manifest = build_manifest(
+            [
+                build_screen(
+                    screen_id="s0001",
+                    position=1,
+                    blocks=[
+                        ("adverse_reactions", 0, "Nausea was reported. " * 20),
+                        ("boxed_warning", 0, "A class effect."),
+                    ],
+                )
+            ]
+        )
+        record = self._run(tmp_path, manifest).resolved()["s0001"]
+        assert record.protocol is Protocol.FULL
+        # Four keypresses at 10 s each, measured from the render before the first.
+        assert record.elapsed_ms == 40_000
+        assert record.elapsed_ms != 10_000, "elapsed covers only the last interval"
+
+    def test_a_bounded_screen_records_render_to_verdict(self, tmp_path: Path) -> None:
+        manifest = build_manifest(
+            [
+                build_screen(
+                    screen_id="s0001",
+                    position=1,
+                    blocks=[
+                        ("adverse_reactions", 0, "Nausea and other findings. " * 800),
+                        ("boxed_warning", 0, "A class effect."),
+                    ],
+                )
+            ]
+        )
+        record = self._run(tmp_path, manifest).resolved()["s0001"]
+        assert record.protocol is Protocol.BOUNDED
+        assert record.elapsed_ms == 40_000
+        assert record.elapsed_ms != 10_000, "elapsed covers only the last interval"
+
+    def test_navigation_alone_does_not_shorten_the_span(self, tmp_path: Path) -> None:
+        """More paging must mean more elapsed time, not the same.
+
+        Under a per-keypress reset both of these read one tick and the assertion
+        below is what separates them.
+        """
+        manifest = build_manifest(
+            [
+                build_screen(
+                    screen_id="s0001", position=1, blocks=[("adverse_reactions", 0, "x " * 200)]
+                )
+            ]
+        )
+        quick = AnnotationStore(tmp_path / "quick.jsonl")
+        keys = self.TickingKeys("n", tick=10.0)
+        run_session(
+            manifest, quick, keys, write=lambda _: None, past_checkpoint=True, clock=keys.clock
+        )
+        slow = AnnotationStore(tmp_path / "slow.jsonl")
+        keys = self.TickingKeys("      n", tick=10.0)
+        run_session(
+            manifest, slow, keys, write=lambda _: None, past_checkpoint=True, clock=keys.clock
+        )
+
+        assert quick.resolved()["s0001"].elapsed_ms == 10_000
+        assert slow.resolved()["s0001"].elapsed_ms == 70_000

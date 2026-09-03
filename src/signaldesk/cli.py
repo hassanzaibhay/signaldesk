@@ -848,6 +848,13 @@ def evals_annotate(
         bool,
         typer.Option("--past-checkpoint", help="Continue past the screen-50 review."),
     ] = False,
+    guideline_version: Annotated[
+        str | None,
+        typer.Option(
+            "--guideline-version",
+            help="Version written onto new records. Defaults to the manifest's.",
+        ),
+    ] = None,
 ) -> None:
     """Annotate the labeledness gold set, one pair at a time.
 

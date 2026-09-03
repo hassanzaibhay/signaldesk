@@ -1,8 +1,18 @@
 # Labeledness annotation guideline
 
-Version: v1
-Status: awaiting approval
+Version: v2
+Status: approved
 Applies to: `evals/golden/labeledness_v1.jsonl`
+
+Amendment history:
+
+* **v2** -- amended before any live verdict existed, at the point the first
+  50-screen pass was discarded. Section 7.1 only: the artefact-term aid was
+  generalised from 118 to 166 Preferred Terms and its published figure restated
+  as a range. No verdict rule changed. See 7.2.
+* **v1** -- approved before the draw. The sample manifest records v1 because
+  that is the version the sample was *drawn* under; records carry the version
+  they were *annotated* under, and after this amendment those differ.
 
 This document defines the labels in the labeledness gold set. It is written and
 approved before any annotation exists, and every annotation record carries the
@@ -471,11 +481,33 @@ body. A label cannot describe them as adverse reactions because they are not
 adverse reactions, so they are `u` under case 2 and the verdict should be
 immediate rather than reasoned from scratch each time.
 
-Measured over the 374,846-pair frame before the draw: **118 such Preferred Terms
-account for 8,664 pairs, 2.31 percent of the frame, giving an expected 6.9
-screens in a 300-pair draw.** They are not excluded from the frame -- a frame
-filtered on a hand-built term list is a frame that has to be defended, and this
-list is a reading aid, not a boundary of the population.
+**The rule is denotation. The list is a recognition aid.** A term absent from
+the list is still `u` if it denotes a circumstance of use; a term on the list
+would still be `u` if the list were deleted. Nothing below is a boundary of the
+population, and no pair is excluded from the frame on account of it -- a frame
+filtered on a hand-built term list is a frame that has to be defended.
+
+Measured over the full 374,846-pair frame, the prevalence is a **range, not a
+point**:
+
+| pattern | Preferred Terms | pairs | share | expected in 300 |
+|---|---|---|---|---|
+| v1, narrower -- a **floor** | 118 | 8,664 | 2.31% | 6.9 |
+| **v2, current** | **166** | **9,466** | **2.53%** | **7.6** |
+
+The v1 figure undercounted, and it is left visible rather than overwritten
+because knowing the aid has been wrong once is worth more than a tidy number.
+The cause was mechanical: the v1 pattern anchored the noun before `ERROR` and
+`ISSUE` on `PRODUCT`, so the whole `DRUG ...ERROR` family fell through, and it
+carried no handling or confusion vocabulary. **Three misses were found in a
+single 50-screen sample** -- `DRUG DISPENSING ERROR`, `PRODUCT TEMPERATURE
+EXCURSION ISSUE` and `PRODUCT AVAILABILITY ISSUE`, of which only the last was on
+the v1 list. All three denote circumstances of use, so all three were `u` under
+the rule the whole time; only the aid failed to name them.
+
+A wider variant catching anything ending `ERROR` or `ISSUE` reaches 220 terms and
+2.83 percent. It is **not** adopted: it sweeps in clinical events whose names
+merely end that way, and an aid that has to be second-guessed is not an aid.
 
 The most frequent, which between them are most of what will actually appear:
 
@@ -500,15 +532,53 @@ INTENTIONAL PRODUCT USE ISSUE          ACCIDENTAL EXPOSURE TO PRODUCT
 INTENTIONAL DOSE OMISSION              PRESCRIBED OVERDOSE / UNDERDOSE
 NO ADVERSE EVENT                       OVERDOSE / UNDERDOSE
 UNEVALUABLE EVENT                      DEVICE ISSUE / DEVICE USE ISSUE
+
+added in v2:
+DRUG ADMINISTRATION ERROR              PRODUCT LABEL CONFUSION
+DRUG PRESCRIBING ERROR                 PRODUCT PACKAGING CONFUSION
+DRUG DISPENSING ERROR                  PRODUCT NAME CONFUSION
+DRUG TITRATION ERROR                   PRODUCT APPEARANCE CONFUSION
+MEDICATION MONITORING ERROR            PRODUCT TEMPERATURE EXCURSION ISSUE
+DEVICE DELIVERY SYSTEM ISSUE           PRODUCT TAMPERING
+DEVICE MECHANICAL ISSUE                PRODUCT COUNTERFEIT
+  and the rest of the DEVICE
+  subsystem family
 ```
 
 The test is what the term denotes, not whether it appears above. A term naming a
 circumstance of use is an artefact; a term naming something that happened in a
 body is not, however administrative it sounds. `MEDICAL DEVICE SITE ERYTHEMA` is
-a clinical event and is annotated normally; `DEVICE ISSUE` is not. Two near-
-misses worth naming, because a looser reading of this list catches them and both
-are real events to be annotated on their merits: `POOR QUALITY SLEEP` and
-`INAPPROPRIATE ANTIDIURETIC HORMONE SECRETION`.
+a clinical event and is annotated normally; `DEVICE ISSUE` is not. Three near-
+misses worth naming, because a looser reading of this list catches them and all
+are real events to be annotated on their merits: `POOR QUALITY SLEEP`,
+`INAPPROPRIATE ANTIDIURETIC HORMONE SECRETION`, and `PRE-EXISTING CONDITION
+IMPROVED`.
+
+`PRE-EXISTING CONDITION IMPROVED` is the instructive one and is deliberately
+**not** on the list. It denotes a clinical outcome, not a circumstance of use, so
+it fails the denotation test that governs this section. It is `n`, by section
+3.4: no label describes it as an adverse reaction, and that is a determinate
+answer rather than an indeterminate one. Keeping `u` narrow is the discipline --
+every term admitted to `u` on a loose reading is annotation paid for and not
+scored.
+
+### 7.2 What the v2 amendment changed, and why it could be made mid-project
+
+Recorded here because an amendment made quietly is indistinguishable from a
+guideline written after the fact.
+
+Made at the moment the first 50-screen pass was discarded, when the store held
+zero live verdicts. That is the only point at which an amendment is not a mid-run
+change against partially annotated data.
+
+It touches section 7.1 and nothing else. No verdict rule moved: the predicate was
+denotation before the amendment and is denotation after it, and only the
+recognition aid grew. It can therefore reach `u` and nothing else -- and `u` is
+dropped from the metric, so the amendment cannot move the labelled rate in either
+direction.
+
+The generalisation was measured over the whole 374,846-pair frame, not over the
+drawn 330 screens, so it is not tuned to the sample being annotated.
 
 A note is prompted on `u` and only on `u`. It is optional but it is the only
 place the guideline learns what it failed to specify, so it is worth the

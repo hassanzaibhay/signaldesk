@@ -134,6 +134,10 @@ class SampleManifest(BaseModel):
     run_id: str
     written_at: datetime
     seed: int
+    #: The version the sample was DRAWN under. A record carries the version its
+    #: verdict was MADE under, and after an amendment the two differ. This field
+    #: is never rewritten to match a later guideline; that would claim the sample
+    #: was drawn against a document that did not exist when it was drawn.
     guideline_version: str
     long_section_chars: int = LONG_SECTION_CHARS
 

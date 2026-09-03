@@ -116,14 +116,26 @@ def run_session(
     write: Callable[[str], None],
     past_checkpoint: bool = False,
     clock: Callable[[], float] = time.monotonic,
+    guideline_version: str | None = None,
 ) -> SessionResult:
     """Annotate from the resume point until the annotator quits or the file ends.
+
+    ``guideline_version`` is what goes on every record written here, defaulting to
+    the manifest's. The two are different facts and conflating them was a
+    modelling error: the manifest records the version the sample was *drawn*
+    under, and a record records the version the verdict was *made* under. They
+    agree until the guideline is amended, and the guideline's own amendment
+    procedure in section 8 requires that they be able to disagree -- without this
+    parameter no amendment could ever be recorded, because the manifest is
+    committed and must not be rewritten to carry a version it was not drawn
+    under.
 
     No verdict is preselected and no key defaults to one: an unrecognised key,
     Enter included, re-renders the screen and writes nothing. That is asserted by
     a test on the store rather than on the return value, because a default
     introduced downstream of this dispatch would still leave a record behind.
     """
+    version = guideline_version or manifest.guideline_version
     screen_ids = [screen.screen_id for screen in manifest.screens]
     live = store.resolved()
     position = next_position(len(manifest.screens), live, screen_ids)
@@ -159,7 +171,7 @@ def run_session(
                 record = verdict_record(
                     screen_id=screen.screen_id,
                     verdict=verdict,
-                    guideline_version=manifest.guideline_version,
+                    guideline_version=version,
                     protocol=screen.protocol,
                     elapsed_ms=elapsed,
                     set_id=screen.set_id,
@@ -184,9 +196,7 @@ def run_session(
                 target = last_answered
                 if target is None:
                     continue
-                store.append(
-                    undo_record(screen_id=target, guideline_version=manifest.guideline_version)
-                )
+                store.append(undo_record(screen_id=target, guideline_version=version))
                 live.pop(target, None)
                 last_answered = None
                 undone += 1
