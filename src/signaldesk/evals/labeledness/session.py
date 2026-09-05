@@ -9,6 +9,7 @@ neither is closed by that test and neither is claimed to be.
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from collections.abc import Callable
@@ -17,7 +18,7 @@ from pathlib import Path
 from typing import Final
 from typing import Protocol as TypingProtocol
 
-from signaldesk.core.errors import AnnotationError
+from signaldesk.core.errors import AnnotationError, EndOfInputError
 from signaldesk.core.logging import get_logger
 from signaldesk.evals.labeledness.manifest import SampleManifest, Screen
 from signaldesk.evals.labeledness.render import (
@@ -59,12 +60,27 @@ class KeyReader(TypingProtocol):
 
 
 class TerminalKeyReader:
-    """Single keypresses from a real terminal, raw on POSIX, direct on Windows.
+    """One keypress, read from the file descriptor and never from a buffer.
 
-    Falls back to line mode when stdin is not a tty, which is what happens under
-    ``docker compose exec -T``. The fallback is announced rather than silent: an
-    annotator who has to press Enter after every verdict should know why, since
-    it roughly doubles the keystrokes over 330 screens.
+    Two sessions of 50 screens were discarded to the previous version of this
+    class, so the reasons are written here rather than left to the diff.
+
+    **The descriptor, not ``sys.stdin``.** ``sys.stdin`` is a buffered
+    ``TextIOWrapper``: its first ``read(1)`` pulls a whole chunk off the
+    descriptor, and every later ``read(1)`` is served from that chunk without
+    touching the terminal. A burst of N characters therefore became N verdicts at
+    render cost each, with no blocking and no raw mode in effect. ``os.read`` on
+    the descriptor has no such buffer.
+
+    **Flush before reading.** Between reads the terminal is in cooked mode, so
+    anything typed while a screen renders is queued and echoed by the line
+    discipline. Discarding that queue immediately before each read means a
+    verdict can only come from a key pressed while the screen was up, which is
+    what a verdict is supposed to mean.
+
+    **End of input raises.** A reader with no input has no keystroke to report.
+    The previous version substituted ``q``, which silently ended a session. The
+    store is fsynced per verdict, so failing loudly here loses nothing.
     """
 
     def __init__(self) -> None:
@@ -72,14 +88,22 @@ class TerminalKeyReader:
 
     def read_key(self) -> str:
         if not self.interactive:
-            return (sys.stdin.readline() or "q").strip()[:1] or "\n"
+            return self._read_key_line()
         if sys.platform == "win32":  # pragma: no cover - host-only path
             import msvcrt
 
             return msvcrt.getwch()
         return self._read_key_posix()
 
-    def _read_key_posix(self) -> str:  # pragma: no cover - requires a tty
+    def _read_key_line(self) -> str:
+        """Line mode, for a stdin that is not a terminal."""
+        line = sys.stdin.readline()
+        if not line:
+            message = "stdin reached end of input; there is no keystroke to read"
+            raise EndOfInputError(message)
+        return line.strip()[:1] or "\n"
+
+    def _read_key_posix(self) -> str:
         import termios
         import tty
 
@@ -87,9 +111,17 @@ class TerminalKeyReader:
         saved = termios.tcgetattr(descriptor)
         try:
             tty.setraw(descriptor)
-            return sys.stdin.read(1)
+            # Discard whatever was typed while the screen was rendering. Without
+            # this the queue is drained one character per screen, and a single
+            # burst answers the rest of the session.
+            termios.tcflush(descriptor, termios.TCIFLUSH)
+            data = os.read(descriptor, 1)
         finally:
             termios.tcsetattr(descriptor, termios.TCSADRAIN, saved)
+        if not data:
+            message = "the terminal reached end of input; there is no keystroke to read"
+            raise EndOfInputError(message)
+        return data.decode("utf-8", errors="replace")
 
     def read_line(self, prompt: str) -> str:
         sys.stdout.write(prompt)

@@ -878,7 +878,14 @@ def evals_annotate(
     def _write(frame: str) -> None:
         typer.echo(frame)
 
-    result = run_session(manifest, store, reader, write=_write, past_checkpoint=past_checkpoint)
+    result = run_session(
+        manifest,
+        store,
+        reader,
+        write=_write,
+        past_checkpoint=past_checkpoint,
+        guideline_version=guideline_version,
+    )
     typer.echo(f"{result.answered} answered, {result.undone} retracted this session.")
     if result.reached_checkpoint:
         live = list(store.resolved().values())

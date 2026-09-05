@@ -55,3 +55,12 @@ class AnnotationError(SignalDeskError):
     the one artifact in this project that cannot be regenerated, so a store that
     cannot be read has to stop the run rather than start a fresh one.
     """
+
+
+class EndOfInputError(AnnotationError):
+    """A key reader was asked for a keystroke and its input had ended.
+
+    Distinct from the other annotation errors because it is the one that must
+    never be answered with a default. Substituting a keystroke for absent input
+    is what silently ended two annotation sessions.
+    """
