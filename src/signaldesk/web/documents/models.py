@@ -34,6 +34,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from django.db import models
+from pgvector.django import HnswIndex, VectorField
 
 
 class SectionCode(models.TextChoices):
@@ -157,3 +158,134 @@ class LabelDrugKey(models.Model):
 
     def __str__(self) -> str:
         return f"{self.folded_string} -> {self.document_id} ({self.route})"
+
+
+#: Width of the dense vectors this project stores.
+#:
+#: MedCPT-Article-Encoder is a PubMedBERT-base model, whose hidden size is 768.
+#: That is the expectation this column is built against and it has not been
+#: confirmed against the weights, which are not a dependency of this app. The
+#: embed step asserts the model's real output width against this number and
+#: refuses on a mismatch rather than truncating or padding, so a wrong value
+#: here fails on the first batch instead of producing an index that is quietly
+#: not what it claims. Changing it is a migration, not a setting.
+EMBEDDING_DIMENSIONS = 768
+
+
+class LabelChunk(models.Model):
+    """One retrievable window of one label section.
+
+    Deduplicated. A large share of section rows are byte-identical to another:
+    the same generic is labelled by many manufacturers and the sections repeat
+    verbatim. Storing a chunk per section row would multiply the text and, far
+    more expensively, multiply the embeddings computed from it.
+
+    `sha256` covers the section code as well as the text, so identical wording
+    under `boxed_warning` and under `adverse_reactions` stays two rows. They are
+    two different strengths of claim, and the labeledness question turns on
+    which one a sentence came from.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    sha256 = models.CharField(max_length=64, unique=True)
+    section_code = models.CharField(max_length=24, choices=SectionCode.choices)
+    text = models.TextField()
+    #: Conservative wordpiece estimate from `rag.chunking`, not tokenizer
+    #: output. Stored because the packing decision rested on it and a later
+    #: disagreement with the real tokenizer is worth being able to see.
+    token_estimate = models.IntegerField()
+
+    class Meta:
+        db_table = "label_chunk"
+        ordering: ClassVar = ["id"]
+        indexes: ClassVar = [
+            models.Index(fields=["section_code"], name="label_chunk_section_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"chunk {self.sha256[:12]} ({self.section_code})"
+
+
+class LabelChunkOccurrence(models.Model):
+    """Where one deduplicated chunk appears in the corpus.
+
+    The join that makes deduplication safe. Retrieval returns a chunk; a
+    reviewer needs to know which labels, and therefore which drugs, actually say
+    it. Without this table a deduplicated chunk has no provenance and the saving
+    would have been bought by discarding the thing the corpus is for.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    chunk = models.ForeignKey(LabelChunk, on_delete=models.CASCADE, related_name="occurrences")
+    section = models.ForeignKey(LabelSection, on_delete=models.CASCADE, related_name="chunks")
+    #: Position of this chunk within that section, from zero.
+    ordinal = models.IntegerField()
+
+    class Meta:
+        db_table = "label_chunk_occurrence"
+        ordering: ClassVar = ["section", "ordinal"]
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=["chunk", "section"], name="label_chunk_occurrence_unique"
+            )
+        ]
+        indexes: ClassVar = [
+            models.Index(fields=["section", "ordinal"], name="label_chunk_occ_section_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.chunk_id} in section {self.section_id}[{self.ordinal}]"
+
+
+class ChunkEmbedding(models.Model):
+    """One chunk's dense vector, under one model.
+
+    Separate from the chunk so that chunking and embedding are separable steps:
+    chunks exist unembedded, which is the state the corpus is in until the embed
+    run happens, and re-embedding under a different encoder adds rows rather
+    than rewriting the corpus. The ablation encoder named in the settings needs
+    exactly that.
+
+    `model` and `model_revision` are recorded per row rather than assumed from
+    configuration. A vector whose producing model cannot be named from the row
+    itself is not traceable, and a table holding two models' output with no way
+    to tell them apart is worse than one holding neither.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    chunk = models.ForeignKey(LabelChunk, on_delete=models.CASCADE, related_name="embeddings")
+    #: Model identifier as configured, for example "ncbi/MedCPT-Article-Encoder".
+    model = models.CharField(max_length=128)
+    #: Weights revision where the loader could report one. Empty means the
+    #: loader did not supply it, which is different from the model having no
+    #: revisions and is left distinguishable.
+    model_revision = models.CharField(max_length=64, blank=True, default="")
+    #: The width actually produced, recorded next to the vector rather than
+    #: inferred from the column, so a migration that widened the column later
+    #: cannot make old rows look like they were always that wide.
+    dimensions = models.IntegerField()
+    vector = VectorField(dimensions=EMBEDDING_DIMENSIONS)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "chunk_embedding"
+        ordering: ClassVar = ["chunk", "model"]
+        constraints: ClassVar = [
+            models.UniqueConstraint(fields=["chunk", "model"], name="chunk_embedding_unique")
+        ]
+        indexes: ClassVar = [
+            models.Index(fields=["model"], name="chunk_embedding_model_idx"),
+            # Cosine, over vectors normalised at write. With unit vectors cosine
+            # and inner product rank identically, and cosine stays correct if a
+            # normalisation is ever missed, which inner product does not.
+            HnswIndex(
+                name="chunk_embedding_hnsw",
+                fields=["vector"],
+                m=16,
+                ef_construction=200,
+                opclasses=["vector_cosine_ops"],
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.chunk_id} under {self.model}"

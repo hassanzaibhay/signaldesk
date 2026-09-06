@@ -1,0 +1,2 @@
+{"query_id": "q001", "query": "does metformin cause lactic acidosis", "relevant": ["4b8c3d5bdf0602dcdb0a2680f8f1fe9895634f47ac617f68f2fbbadfdd1ee1db"], "note": "synthetic fixture, not a judgement"}
+{"query_id": "q002", "query": "hepatic failure with acetaminophen", "relevant": ["c089183495a5984e2c76941009c89d4e8f881c799c4beb102aec7d515cb32ed2", "16d76e55f593b94bbee4c102b5b69113987cfc387e94b6852447036fce341a46"], "note": "synthetic fixture, not a judgement"}

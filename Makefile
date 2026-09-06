@@ -112,7 +112,7 @@ signals-mgps-diagnostic:  ## Profile the MGPS likelihood in alpha1 for one run
 signals-artifact:  ## Collect signal runs into one artifact under evals/history/
 	$(EXEC_SHA) signaldesk signals artifact $(ARGS)
 
-build-index:  ## Chunk, embed, and build the sparse and dense indexes
+build-index:  ## Chunk the label corpus and build the sparse index
 	$(EXEC) signaldesk index build $(ARGS)
 
 record-cassettes:  ## Record model responses for offline CI
