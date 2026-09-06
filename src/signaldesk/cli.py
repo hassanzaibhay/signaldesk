@@ -725,10 +725,92 @@ def signals_mgps_diagnostic(
     typer.echo(f"written to:          {out}")
 
 
+@index_app.command("chunk")
+def index_chunk(
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help=(
+                "Re-chunk sections that already have chunks. Needed after a change "
+                "to the chunk size, the overlap, or the sentence splitter, which a "
+                "resumed run would otherwise skip past."
+            ),
+        ),
+    ] = False,
+) -> None:
+    """Split every label section into overlapping, section-aware windows.
+
+    Needs no model. Resumable: a section that already has chunks is skipped, so
+    an interrupted run continues rather than restarting. The sentence splitter
+    is the dominant cost, so a first pass over the whole corpus takes
+    appreciably longer than a resumed one.
+    """
+    _setup_django()
+    from signaldesk.rag.index.corpus import chunk_corpus
+
+    run = chunk_corpus(force=force)
+    for key, value in run.as_dict().items():
+        typer.echo(f"{key}: {value}")
+
+
+@index_app.command("sparse")
+def index_sparse() -> None:
+    """Build the BM25 index over the stored chunks.
+
+    Needs no model. Rebuilt whole every time: bm25s computes corpus statistics
+    at index time, and extending an index incrementally would score new chunks
+    against an older corpus's term frequencies.
+    """
+    _setup_django()
+    from signaldesk.rag.index.corpus import build_sparse_index
+
+    count, path = build_sparse_index()
+    typer.echo(f"chunks indexed: {count}")
+    typer.echo(f"written to: {path}")
+
+
 @index_app.command("build")
-def index_build() -> None:
-    """Chunk documents, embed Tier A, and build the sparse and dense indexes."""
-    _owned_by("P10", "index build")
+def index_build(
+    force: Annotated[bool, typer.Option("--force", help="Re-chunk existing sections.")] = False,
+) -> None:
+    """Chunk the label corpus and build the sparse index.
+
+    The dense half - MedCPT embeddings into pgvector - is not wired here yet.
+    Its two model adapters are the only part of retrieval that cannot be
+    exercised in continuous integration, which installs no torch, so they land
+    separately rather than inside this change. Until then this command builds
+    everything that can be built without a model and says so rather than
+    reporting a complete index.
+    """
+    index_chunk(force=force)
+    index_sparse()
+    typer.echo("")
+    typer.echo("dense index: not built. The encoder adapter is not implemented yet,")
+    typer.echo("so retrieval runs sparse-only until it is.")
+
+
+def _run_retrieval_suite() -> None:
+    """Score retrieval against the curated gold set.
+
+    Refuses, naming the path and the schema, until that file exists. Relevance
+    judgements are made by hand and are never generated here: a gold set
+    produced by the system it evaluates, or by a model standing in for an
+    annotator, measures nothing. No retrieval metric has been computed for this
+    project and none should be inferred from this command existing.
+    """
+    from signaldesk.evals.retrieval import RetrievalGoldSetError, load_gold_set
+
+    try:
+        gold = load_gold_set()
+    except RetrievalGoldSetError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=1) from error
+
+    # Unreachable until a gold set exists. When one does, this is where the
+    # retriever is assembled and handed to the suite.
+    typer.echo(f"gold set: {len(gold)} judgements from {gold.source}")
+    _owned_by("P10 dense retrieval", "scoring against a gold set")
 
 
 def _run_signals_suite() -> None:
@@ -768,6 +850,9 @@ def evals_run(
     if suite == "signals":
         _setup_django()
         _run_signals_suite()
+        return
+    if suite == "retrieval":
+        _run_retrieval_suite()
         return
     _owned_by("P09 to P16", f"the {suite} evaluation suite")
 
