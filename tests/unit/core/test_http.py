@@ -174,6 +174,62 @@ def test_cache_key_ignores_parameter_order() -> None:
     assert left == right
 
 
+class TestCredentialsAreNotPartOfResourceIdentity:
+    """An API key changes what a service allows, never what it returns.
+
+    Keeping it in the cache key meant a re-run with a rotated key, or with none,
+    missed every entry it already held. That is not hypothetical: the openFDA
+    ingest wrote 317 entries with no key, the key was supplied, and all 317
+    became unaddressable at once.
+    """
+
+    def test_the_key_is_the_same_with_and_without_a_credential(self) -> None:
+        without = http.ResponseCache.key("GET", URL, {"search": "aspirin"})
+        with_key = http.ResponseCache.key("GET", URL, {"search": "aspirin", "api_key": "abc"})
+        assert without == with_key
+
+    def test_the_key_is_the_same_across_two_different_credentials(self) -> None:
+        """The rotation case. Rotating a key must not void the cache."""
+        first = http.ResponseCache.key("GET", URL, {"search": "aspirin", "api_key": "one"})
+        second = http.ResponseCache.key("GET", URL, {"search": "aspirin", "api_key": "two"})
+        assert first == second
+
+    @pytest.mark.parametrize("param", ["search", "limit", "skip"])
+    def test_the_key_differs_when_a_non_credential_parameter_differs(self, param: str) -> None:
+        """The other half. Stripping too much would collapse distinct resources.
+
+        A parameter that genuinely varies the response must keep varying the key,
+        which is why the removal is a denylist of credential names rather than a
+        heuristic over anything that looks secret.
+        """
+        base = {"search": "aspirin", "limit": "100", "skip": "0"}
+        other = {**base, param: base[param] + "9"}
+        assert http.ResponseCache.key("GET", URL, base) != http.ResponseCache.key("GET", URL, other)
+
+    def test_an_unrecognised_parameter_still_varies_the_key(self) -> None:
+        """Nothing is stripped for looking unfamiliar."""
+        left = http.ResponseCache.key("GET", URL, {"cursor": "abc"})
+        right = http.ResponseCache.key("GET", URL, {"cursor": "def"})
+        assert left != right
+
+    @respx.mock
+    def test_an_entry_written_without_a_key_is_read_back_with_one(self, settings: Settings) -> None:
+        """End to end, which is the shape the real defect took.
+
+        Written keyless, read back keyed, and the second call must not reach the
+        network. Asserting on ResponseCache.key alone would pass even if `get`
+        built its key some other way.
+        """
+        route = respx.get(URL).mock(return_value=httpx.Response(200, text="ok"))
+
+        http.get(URL, settings=settings, params={"search": "aspirin"})
+        second = http.get(URL, settings=settings, params={"search": "aspirin", "api_key": "abc"})
+
+        assert route.call_count == 1
+        assert second.headers[http.CACHE_HEADER] == "hit"
+        assert second.text == "ok"
+
+
 def test_corrupt_cache_entry_is_treated_as_a_miss(settings: Settings) -> None:
     cache = http.ResponseCache(settings.http_cache_dir)
     key = http.ResponseCache.key("GET", URL, None)

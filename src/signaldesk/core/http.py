@@ -38,6 +38,7 @@ from tenacity.nap import sleep as default_sleep
 
 from signaldesk.core.config import Settings, get_settings
 from signaldesk.core.logging import get_logger
+from signaldesk.core.redaction import strip_credentials
 
 log = get_logger(__name__)
 
@@ -111,11 +112,27 @@ class ResponseCache:
 
     @staticmethod
     def key(method: str, url: str, params: Mapping[str, str] | None = None) -> str:
+        """The cache key, over resource identity rather than over the request.
+
+        Credential parameters are removed first. An API key changes what a service
+        will allow, never what it returns, so two requests that differ only in the
+        key ask for the same resource and must find the same entry. Leaving the
+        key in meant a re-run with a rotated key, or without one, missed every
+        entry it already held and refetched the lot.
+
+        The removal is a denylist of credential names in ``core.redaction``, not a
+        heuristic. An unrecognised parameter stays in the key, because a parameter
+        that genuinely varies the response must keep varying the key.
+
+        This is the only place a key is built. ``is_cached`` and ``request`` both
+        route through it, so a lookup and a store cannot disagree about what a
+        request is.
+        """
         canonical = json.dumps(
             {
                 "method": method.upper(),
                 "url": url,
-                "params": dict(sorted(params.items())) if params else {},
+                "params": dict(sorted(strip_credentials(params).items())),
             },
             sort_keys=True,
         )
