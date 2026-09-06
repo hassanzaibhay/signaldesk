@@ -1669,7 +1669,7 @@ dev = [
 requires-dist = [
     { name = "bm25s", specifier = "~=0.2" },
     { name = "celery", extras = ["redis"], specifier = "~=5.4" },
-    { name = "django", specifier = "~=5.1" },
+    { name = "django", specifier = "~=5.2" },
     { name = "django-htmx", specifier = "~=1.19" },
     { name = "django-prometheus", specifier = "~=2.3" },
     { name = "django-ratelimit", specifier = "~=4.1" },
