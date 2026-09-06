@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% load static %}
+{% load signal_format %}
+
+{% block title %}Signals - SignalDesk{% endblock %}
+
+{% block nav %}
+  <a href="{% url 'signals:explorer' %}" class="font-medium text-slate-900">Signals</a>
+{% endblock %}
+
+{% block content %}
+  <h1 class="text-2xl font-semibold tracking-tight">Drug-event signals</h1>
+  <p class="mt-2 max-w-3xl text-sm text-slate-600">
+    {{ page.corpus_total|count }} drug-event pairs, every one of them reported
+    together at least {{ min_a }} times in the FAERS corpus. These are reporting
+    patterns, not causal findings.
+  </p>
+
+  {% if run %}
+    <dl class="mt-6 grid gap-x-8 gap-y-2 rounded border border-slate-200 bg-white p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-slate-500">Signal run</dt>
+        <dd class="font-mono text-slate-900">{{ run.run_id }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-slate-500">Built at commit</dt>
+        <dd class="font-mono text-slate-900">{{ run.short_sha }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-slate-500">Pairs at a &ge; {{ run.min_a }}</dt>
+        <dd class="text-slate-900">{{ run.pairs_at_or_above_min_a|count }} of {{ run.pairs_written|count }} scored</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-slate-500">Committed artifact</dt>
+        <dd class="font-mono text-slate-900">evals/history/{{ run.artifact }}</dd>
+      </div>
+    </dl>
+  {% else %}
+    <p class="mt-6 rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+      Run <span class="font-mono">{{ page.run_id }}</span> has no record under
+      <span class="font-mono">evals/history/</span>. The rows below are real, but
+      nothing on this page is a published figure until that run is collected into
+      an artifact.
+    </p>
+  {% endif %}
+
+  {% if run and run.withheld_estimators %}
+    <div class="mt-4 rounded border border-red-300 bg-red-50 p-4 text-sm text-red-900">
+      <p class="font-medium">
+        MGPS is not quotable for this run.
+      </p>
+      <p class="mt-1">{{ run.withheld_reason }}</p>
+      <p class="mt-1">
+        The MGPS column below is therefore present and empty of numbers. Quotable
+        estimators for this run: {{ run.quotable_estimators|join:", " }}.
+      </p>
+    </div>
+  {% endif %}
+
+  <form class="mt-6 flex flex-wrap items-end gap-3"
+        hx-get="{% url 'signals:explorer' %}"
+        hx-target="#results"
+        hx-swap="innerHTML"
+        hx-push-url="true"
+        hx-indicator="#results-indicator"
+        hx-trigger="submit, keyup changed delay:350ms from:input[type=search], search from:input[type=search]">
+    <input type="hidden" name="sort" value="{{ query.sort.value }}">
+    <input type="hidden" name="direction" value="{{ query.direction.value }}">
+    <label class="flex flex-col gap-1 text-sm">
+      <span class="font-medium text-slate-700">Drug</span>
+      <input type="search" name="drug" value="{{ query.drug }}" placeholder="e.g. METFORMIN"
+             autocomplete="off"
+             class="w-64 rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none">
+    </label>
+    <label class="flex flex-col gap-1 text-sm">
+      <span class="font-medium text-slate-700">Event</span>
+      <input type="search" name="event" value="{{ query.event }}" placeholder="e.g. LACTIC ACIDOSIS"
+             autocomplete="off"
+             class="w-64 rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none">
+    </label>
+    <button type="submit"
+            class="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+      Filter
+    </button>
+    <a href="{{ clear_url }}"
+       hx-get="{{ clear_url }}" hx-target="#results" hx-swap="innerHTML" hx-push-url="true"
+       class="px-2 py-2 text-sm text-slate-600 underline hover:text-slate-900">Clear</a>
+    <span id="results-indicator" class="htmx-indicator text-sm text-slate-500">searching...</span>
+  </form>
+
+  <p class="mt-3 max-w-3xl text-xs text-slate-500">
+    Drug is matched against the raw FAERS drug string folded to upper case, not
+    against an RxNorm ingredient. Brands and generics are separate rows, spellings
+    are as reported, and a search for an ingredient will not find a brand that
+    does not name it.
+  </p>
+
+  <div id="results" class="mt-6">
+    {% include "signals/_results.html" %}
+  </div>
+
+  {% if label_scope %}
+    <section class="mt-8 rounded border border-slate-200 bg-white p-4 text-sm text-slate-700">
+      <h2 class="font-medium text-slate-900">Label coverage</h2>
+      <p class="mt-1">
+        Structured product labels were fetched for the {{ label_scope.selected_slots }} drug
+        strings carrying the most flagged pairs, of
+        {{ label_scope.total_flagged_strings|count }} strings that carry any. Of those,
+        {{ label_scope.rates_sentence }}. {{ label_scope.label_carrying_strings }} drug
+        strings reached at least one label, and
+        {{ label_scope.distinct_documents|count }} distinct labels holding
+        {{ label_scope.distinct_sections|count }} sections are stored.
+      </p>
+      <p class="mt-2 text-xs text-slate-500">
+        Source: evals/history/{{ label_scope.artifact }}. Most drug strings in the
+        table were never queried, so an absent label is a limit of the fetch scope
+        and not a statement about the drug.
+      </p>
+    </section>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'js/plotly.basic.min.js' %}"></script>
+  <script src="{% static 'js/signals_chart.js' %}"></script>
+{% endblock %}

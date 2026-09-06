@@ -8,6 +8,13 @@
 Makefile   text eol=lf
 Dockerfile text eol=lf
 *.png      binary
+
+# Vendored, minified third-party bundles. Marked binary so git does not diff
+# them line by line and so the ASCII gate does not scan them: they are build
+# output from another project, not content this repository writes, and the
+# Plotly bundle legitimately carries non-ASCII characters in its own strings.
+*.min.js   binary
+
 *.parquet  binary
 *.zip      binary
 
