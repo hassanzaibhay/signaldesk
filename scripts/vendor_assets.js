@@ -14,6 +14,9 @@ const target = path.join(root, "src", "signaldesk", "web", "static", "js");
 const assets = [
   ["htmx.org/dist/htmx.min.js", "htmx.min.js"],
   ["alpinejs/dist/cdn.min.js", "alpine.min.js"],
+  // The basic bundle, which carries scatter, bar and pie. The full build is
+  // roughly three times the size and the signals page draws one scatter.
+  ["plotly.js-basic-dist-min/plotly-basic.min.js", "plotly.basic.min.js"],
 ];
 
 fs.mkdirSync(target, { recursive: true });
