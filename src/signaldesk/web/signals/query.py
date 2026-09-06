@@ -297,16 +297,33 @@ def _partition_glob(run_id: str, settings: Settings | None = None) -> str:
     return (signal_root(settings) / f"run={run_id}" / "*.parquet").as_posix()
 
 
+#: The LIKE escape character. Deliberately not a backslash.
+#:
+#: Any single character works here, and backslash is the worst available choice
+#: in this repository. It would have to be written doubled in a Python literal,
+#: which is indistinguishable from a Windows path separator to the portability
+#: gate in CI - a lexical check that cannot tell a path from a SQL escape and
+#: should not have to. An exclamation mark carries no meaning to LIKE, appears
+#: in no drug string in the corpus, and leaves this module with no backslash in
+#: it at all.
+LIKE_ESCAPE: Final = "!"
+
+
 def _contains(term: str) -> str:
     """A LIKE pattern matching ``term`` as a literal substring.
 
     ``%`` and ``_`` are wildcards in LIKE, and drug strings genuinely contain
     both - "MODULE_1" and "5% DEXTROSE" are the shape of thing in this column.
     Passing a term through unescaped would quietly turn a search for one of them
-    into a search for anything, so the metacharacters and the escape character
-    itself are escaped and the pattern declares its escape.
+    into a search for anything.
+
+    The escape character is escaped first. Doing it after the wildcards would
+    re-escape the marks this function had just written and turn a search for
+    "5%" into a search for a literal "!%".
     """
-    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    escaped = term.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+    for wildcard in ("%", "_"):
+        escaped = escaped.replace(wildcard, LIKE_ESCAPE + wildcard)
     return f"%{escaped}%"
 
 
@@ -316,13 +333,14 @@ def _where(query: SignalQuery) -> tuple[str, list[object]]:
     Every user-supplied value is a ``?``. The clause text is built from the
     presence of a term, never from its content.
     """
+    like = f"LIKE ? ESCAPE '{LIKE_ESCAPE}'"
     clauses = [f"a >= {MIN_A}"]
     parameters: list[object] = []
     if query.drug:
-        clauses.append("drug LIKE ? ESCAPE '\\'")
+        clauses.append(f"drug {like}")
         parameters.append(_contains(query.drug))
     if query.event:
-        clauses.append("pt LIKE ? ESCAPE '\\'")
+        clauses.append(f"pt {like}")
         parameters.append(_contains(query.event))
     return " AND ".join(clauses), parameters
 

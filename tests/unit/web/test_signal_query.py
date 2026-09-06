@@ -22,6 +22,7 @@ from signaldesk.web.signals.query import (
     SignalQueryError,
     SortColumn,
     SortDirection,
+    _contains,
     fetch_chart_points,
     fetch_page,
     resolve_run_id,
@@ -105,6 +106,32 @@ def test_a_lower_case_filter_matches_the_folded_keys(corpus: Settings) -> None:
 def test_a_filter_term_is_matched_as_a_literal_substring(corpus: Settings) -> None:
     """A percent sign in a drug name is a character, not a LIKE wildcard."""
     assert _drugs(SignalQuery(drug="5%"), corpus) == ["5% DEXTROSE"]
+
+
+@pytest.mark.parametrize(
+    ("term", "pattern"),
+    [
+        ("ASPIRIN", "%ASPIRIN%"),
+        ("5%", "%5!%%"),
+        ("A_B", "%A!_B%"),
+        ("!", "%!!%"),
+        # Backslash is not the escape character and carries no meaning to LIKE,
+        # so it survives untouched. Drug strings do contain them.
+        ("BACK\\SLASH", "%BACK\\SLASH%"),
+    ],
+)
+def test_every_like_metacharacter_is_escaped(term: str, pattern: str) -> None:
+    assert _contains(term) == pattern
+
+
+def test_the_escape_character_is_escaped_before_the_wildcards() -> None:
+    """Order matters. Escaping wildcards first would re-escape its own marks.
+
+    A term of "!%" must become "!!" then "!%", not "!%" then "!!%": the second
+    order turns a search for a literal percent sign into a search for a literal
+    exclamation mark followed by anything.
+    """
+    assert _contains("!%") == "%!!!%%"
 
 
 def test_drug_and_event_filters_are_conjunctive(corpus: Settings) -> None:
