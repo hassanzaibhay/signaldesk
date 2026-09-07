@@ -6,7 +6,20 @@ EXEC := $(DC) exec -T web
 # record it: the signals targets and the index build. The ingest targets pass
 # no sha and their run artifacts record none, so an ingest artifact cannot be
 # traced to a commit; commit before running one. Tracked as a followup.
-CODE_SHA := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+#
+# Bare, with no redirect and no fallback. GNU Make uses sh.exe when one is on
+# PATH and cmd.exe otherwise, and a PowerShell session has no sh, so the
+# "2>/dev/null || echo unknown" this used to carry did not run a portable
+# command: cmd cannot redirect to /dev/null, the git call failed, the fallback
+# fired, and every artifact written from PowerShell recorded its commit as
+# "unknown" while the same target from bash recorded the real one.
+#
+# Nothing is lost by dropping the fallback. A failed git leaves this empty, and
+# core.provenance.code_sha treats an empty value as unset, tries git itself, and
+# returns "unknown" when that fails too - which it does in the container, where
+# .git is not mounted. One definition of "unknown" rather than two that can
+# disagree about when it applies.
+CODE_SHA := $(shell git rev-parse HEAD)
 # docker compose exec takes its flags before the service name.
 EXEC_SHA := $(DC) exec -T -e SIGNALDESK_CODE_SHA=$(CODE_SHA) web
 
@@ -16,7 +29,8 @@ EXEC_SHA := $(DC) exec -T -e SIGNALDESK_CODE_SHA=$(CODE_SHA) web
         migrate makemigrations superuser fmt lint type hygiene test test-fast cov \
         ingest-faers ingest-labels ingest-labels-check-key ingest-ctgov ingest-pubmed \
         normalize-drugs \
-        build-signals signals-mgps-diagnostic signals-artifact build-index \n        index-benchmark embed-corpus record-cassettes \
+        build-signals signals-mgps-diagnostic signals-artifact build-index \
+        index-benchmark embed-corpus record-cassettes \
         eval-retrieval eval-labeledness eval-briefs eval-signals eval-all \
         demo-data clean reset prune df
 
