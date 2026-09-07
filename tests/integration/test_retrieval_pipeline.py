@@ -14,19 +14,29 @@ metrics a real gold set would go through.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
-from tests.conftest import HashingEncoder, OverlapCrossEncoder
+from django.db.models import Count
+from tests.conftest import HashingDocumentEncoder, HashingEncoder, OverlapCrossEncoder
 
 from signaldesk.core.config import get_settings
 from signaldesk.evals.retrieval import suite
 from signaldesk.evals.retrieval.gold import GoldSet, RetrievalGoldSetError, parse_judgements
 from signaldesk.rag import chunking
-from signaldesk.rag.embed import embed_texts
-from signaldesk.rag.index import dense, sparse
-from signaldesk.rag.index.corpus import build_sparse_index, chunk_corpus
+from signaldesk.rag.embed import EmbeddingError, embed_texts
+from signaldesk.rag.index import artifact, dense, sparse
+from signaldesk.rag.index.corpus import (
+    build_sparse_index,
+    chunk_corpus,
+    embed_pending,
+    pending_chunks,
+)
 from signaldesk.rag.retrieve import retrieve
 from signaldesk.web.documents.models import (
     EMBEDDING_DIMENSIONS,
+    ChunkEmbedding,
     LabelChunk,
     LabelDocument,
     LabelSection,
@@ -175,7 +185,7 @@ class TestTheAssembledPipeline:
     def test_retrieval_leads_with_the_relevant_chunk(self, corpus) -> None:  # type: ignore[no-untyped-def]
         results = retrieve(
             "metformin lactic acidosis",
-            encoder=HashingEncoder(),
+            query_encoder=HashingEncoder(),
             cross_encoder=OverlapCrossEncoder(),
             sparse_index=corpus,
             embedding_model=MODEL,
@@ -187,7 +197,7 @@ class TestTheAssembledPipeline:
     def test_results_carry_where_each_retriever_found_them(self, corpus) -> None:  # type: ignore[no-untyped-def]
         results = retrieve(
             "hepatic failure acetaminophen",
-            encoder=HashingEncoder(),
+            query_encoder=HashingEncoder(),
             cross_encoder=OverlapCrossEncoder(),
             sparse_index=corpus,
             embedding_model=MODEL,
@@ -200,7 +210,7 @@ class TestTheAssembledPipeline:
     def test_the_cutoff_is_the_configured_rerank_depth(self, corpus) -> None:  # type: ignore[no-untyped-def]
         results = retrieve(
             "reactions",
-            encoder=HashingEncoder(),
+            query_encoder=HashingEncoder(),
             cross_encoder=OverlapCrossEncoder(),
             sparse_index=corpus,
             embedding_model=MODEL,
@@ -212,7 +222,7 @@ class TestTheAssembledPipeline:
         """An ablation of the reranker. Fusion order survives, scores are None."""
         results = retrieve(
             "Stevens Johnson syndrome",
-            encoder=HashingEncoder(),
+            query_encoder=HashingEncoder(),
             cross_encoder=None,
             sparse_index=corpus,
             embedding_model=MODEL,
@@ -221,8 +231,12 @@ class TestTheAssembledPipeline:
         assert results
         assert all(result.rerank_score is None for result in results)
 
-    def test_the_sparse_index_is_built_from_stored_chunks(self, corpus) -> None:  # type: ignore[no-untyped-def]
-        count, _path = build_sparse_index()
+    def test_the_sparse_index_is_built_from_stored_chunks(self, corpus, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """Written under tmp_path. Without the override this wrote a real index
+        into the real DATA_DIR, from a database about to be dropped."""
+        count, path = build_sparse_index(path=tmp_path / "sparse-rebuild")
+
+        assert str(tmp_path) in path
 
         assert count == LabelChunk.objects.count()
 
@@ -247,7 +261,7 @@ class TestTheEvaluationHarnessEndToEnd:
                 hashes[result.chunk_id]
                 for result in retrieve(
                     query,
-                    encoder=HashingEncoder(),
+                    query_encoder=HashingEncoder(),
                     cross_encoder=OverlapCrossEncoder(),
                     sparse_index=index,
                     embedding_model=MODEL,
@@ -287,3 +301,173 @@ class TestTheEvaluationHarnessEndToEnd:
     def test_an_empty_gold_set_is_refused_rather_than_averaged_over_nothing(self) -> None:
         with pytest.raises(RetrievalGoldSetError, match="empty gold set"):
             suite.run(GoldSet(judgements=(), source=__file__), lambda _query: [])
+
+
+class TestResumption:
+    """Interrupting a multi-hour embed must lose at most one batch.
+
+    The work queue is the set of chunks with no vector for this model, re-derived
+    every cycle. There is no cursor to lose, and the tests below are the evidence
+    for the two claims that matter: it cannot skip a chunk and it cannot write
+    one twice.
+    """
+
+    def _sections(self, count: int) -> None:
+        document = LabelDocument.objects.create(set_id="resume-0000-4a11-9f00-000000000001")
+        for ordinal in range(count):
+            LabelSection.objects.create(
+                document=document,
+                section_code="warnings",
+                ordinal=ordinal,
+                text=f"Distinct finding number {ordinal} was observed in the trial.",
+            )
+        chunk_corpus()
+
+    def test_a_bounded_run_embeds_only_its_limit(self) -> None:
+        self._sections(6)
+
+        run = embed_pending(HashingDocumentEncoder(), limit=2)
+
+        assert run.embedded_this_run == 2
+        assert run.remaining == 4
+
+    def test_the_next_run_takes_exactly_what_the_first_left(self) -> None:
+        """The whole of resumption: no skip, no repeat, no bookkeeping."""
+        self._sections(6)
+        first = embed_pending(HashingDocumentEncoder(), limit=2)
+        second = embed_pending(HashingDocumentEncoder(), limit=2)
+
+        assert (first.embedded_this_run, second.embedded_this_run) == (2, 2)
+        assert second.already_embedded == 2
+        assert second.remaining == 2
+        assert ChunkEmbedding.objects.count() == 4
+
+    def test_running_to_completion_leaves_nothing_pending(self) -> None:
+        self._sections(5)
+
+        run = embed_pending(HashingDocumentEncoder())
+
+        assert run.remaining == 0
+        assert ChunkEmbedding.objects.count() == LabelChunk.objects.count()
+
+    def test_a_completed_corpus_re_run_does_nothing(self) -> None:
+        """Idempotent: the second pass has no work, not duplicate work."""
+        self._sections(4)
+        embed_pending(HashingDocumentEncoder())
+
+        again = embed_pending(HashingDocumentEncoder())
+
+        assert again.embedded_this_run == 0
+        assert ChunkEmbedding.objects.count() == LabelChunk.objects.count()
+
+    def test_one_chunk_cannot_hold_two_vectors_for_one_model(self) -> None:
+        """Enforced by the database, not by the code that happens to be running."""
+        self._sections(3)
+        embed_pending(HashingDocumentEncoder())
+        embed_pending(HashingDocumentEncoder())
+
+        counts = (
+            ChunkEmbedding.objects.values("chunk_id", "model").annotate(rows=Count("id")).order_by()
+        )
+
+        assert all(row["rows"] == 1 for row in counts)
+
+    def test_resumption_keys_on_the_model_so_a_second_encoder_is_separate_work(self) -> None:
+        """An ablation encoder embeds the same chunks again rather than skipping."""
+        self._sections(3)
+        embed_pending(HashingDocumentEncoder())
+        total = LabelChunk.objects.count()
+
+        run = embed_pending(HashingDocumentEncoder(dimensions=768, model_id="stub/ablation"))
+
+        assert run.embedded_this_run == total
+        assert ChunkEmbedding.objects.count() == 2 * total
+
+    def test_the_pending_query_is_the_work_queue(self) -> None:
+        self._sections(4)
+
+        assert len(pending_chunks("stub/hashing-document-encoder", 10)) == 4
+        embed_pending(HashingDocumentEncoder(), limit=1)
+        assert len(pending_chunks("stub/hashing-document-encoder", 10)) == 3
+
+    def test_a_wrong_width_model_fails_before_writing_anything(self) -> None:
+        """The assertion fires on the first batch, so hours are never spent."""
+        self._sections(4)
+
+        with pytest.raises(EmbeddingError, match="384-dimensional"):
+            embed_pending(HashingDocumentEncoder(dimensions=384))
+
+        assert ChunkEmbedding.objects.count() == 0
+
+
+class TestTheArtifact:
+    def _record(self, **overrides: object) -> dict:
+        fields: dict = {
+            "run_id": "20260907T000000Z",
+            "params": {},
+            "chunking": {},
+            "embedding": {"model": MODEL},
+            "sparse_chunks": 0,
+            "sparse_path": Path("/nonexistent"),
+            "seconds": 1.0,
+        }
+        fields.update(overrides)
+        return artifact.collect(**fields).as_dict()
+
+    def test_it_records_what_exists_rather_than_what_the_run_believed(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        document = self._record(embedding={"model": MODEL, "chunks_embedded_this_run": 4})
+
+        assert document["corpus"]["label_sections"] == len(SECTIONS)
+        assert document["corpus"]["chunks_total"] == LabelChunk.objects.count()
+        assert document["dense"]["embeddings_total"] == ChunkEmbedding.objects.count()
+        assert document["dense"]["embedding_dimensions"] == EMBEDDING_DIMENSIONS
+
+    def test_it_measures_the_index_sizes_from_postgres(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        document = self._record()
+
+        assert document["storage"]["chunk_embedding_bytes"] > 0
+        assert document["storage"]["label_chunk_bytes"] > 0
+        assert document["sparse"]["index_bytes"] == 0
+
+    def test_it_states_that_no_accuracy_figure_is_in_it(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        """The artifact records what was built, not how well it retrieves."""
+        document = self._record()
+
+        assert document["quotable"]["withheld"] == ["retrieval accuracy"]
+        assert "No gold set exists" in document["quotable"]["withheld_reason"]
+        keys = {key.lower() for key in document["dense"]}
+        assert not keys.intersection({"recall", "mrr", "ndcg"})
+
+    def test_it_carries_the_commit_it_ran_at(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        assert self._record()["code_sha"]
+
+    def test_it_writes_one_file_per_run(self, corpus, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        record = artifact.collect(
+            run_id="20260907T000000Z",
+            params={},
+            chunking={},
+            embedding={"model": MODEL},
+            sparse_chunks=0,
+            sparse_path=Path("/nonexistent"),
+            seconds=1.0,
+        )
+
+        written = artifact.write(record, root=tmp_path)
+
+        assert written.name == "index_20260907T000000Z.json"
+        assert json.loads(written.read_text(encoding="utf-8"))["artifact"] == "index"
+
+    def test_an_interrupted_run_is_visible_in_its_own_record(self) -> None:
+        """chunks_without_embedding is what stops a partial run reading as finished."""
+        document = LabelDocument.objects.create(set_id="partial-0000-4a11-9f00-000000000002")
+        for ordinal in range(4):
+            LabelSection.objects.create(
+                document=document,
+                section_code="warnings",
+                ordinal=ordinal,
+                text=f"Finding {ordinal} was observed during the study period.",
+            )
+        chunk_corpus()
+        run = embed_pending(HashingDocumentEncoder(), limit=1)
+
+        assert run.as_dict()["chunks_without_embedding"] == 3
