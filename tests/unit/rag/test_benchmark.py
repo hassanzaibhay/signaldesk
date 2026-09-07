@@ -63,35 +63,61 @@ def _report(**overrides: object) -> TokenReport:
     return TokenReport(**fields)  # type: ignore[arg-type]
 
 
+def _timed(
+    *, sample: int = 100, encode_seconds: float = 10.0, pending: int = 1_000
+) -> BenchmarkReport:
+    """A report with the clock supplied rather than read.
+
+    The projection is arithmetic and is tested as arithmetic. Timing a stub
+    encoder instead makes the assertion depend on clock resolution, which on
+    Windows is about 15 milliseconds - enough for four stub calls to take
+    exactly zero seconds and for a correct projection to read as no projection.
+    """
+    return BenchmarkReport(
+        sample=sample,
+        load_seconds=1.5,
+        measured_dimensions=768,
+        expected_dimensions=768,
+        tokens=_report(),
+        encode_seconds=encode_seconds,
+        pending_chunks=pending,
+        rerank_candidates=100,
+        rerank_seconds=2.0,
+        peak_rss_bytes=512 * 1024**2,
+    )
+
+
 class TestTheProjection:
     def test_throughput_is_the_sample_over_the_time_it_took(self) -> None:
-        report = _measure()
+        report = _timed(sample=100, encode_seconds=10.0)
 
-        assert report.chunks_per_second > 0
-        assert report.projected_seconds == pytest.approx(
-            report.pending_chunks / report.chunks_per_second
-        )
+        assert report.chunks_per_second == pytest.approx(10.0)
+
+    def test_the_projection_is_the_backlog_at_that_rate(self) -> None:
+        report = _timed(sample=100, encode_seconds=10.0, pending=36_000)
+
+        # 36,000 chunks at 10 a second is an hour.
+        assert report.projected_seconds == pytest.approx(3_600.0)
+        assert "1h 00m" in render(report)
 
     def test_a_larger_backlog_projects_a_longer_run(self) -> None:
-        assert _measure(pending=100_000).projected_seconds > _measure(pending=100).projected_seconds
+        assert _timed(pending=100_000).projected_seconds > _timed(pending=100).projected_seconds
 
     def test_nothing_measured_projects_nothing_rather_than_dividing_by_zero(self) -> None:
-        report = BenchmarkReport(
-            sample=0,
-            load_seconds=0.0,
-            measured_dimensions=768,
-            expected_dimensions=768,
-            tokens=_report(),
-            encode_seconds=0.0,
-            pending_chunks=500,
-            rerank_candidates=0,
-            rerank_seconds=0.0,
-            peak_rss_bytes=0,
-        )
+        """Reachable for real: a sample fast enough to finish inside one clock tick."""
+        report = _timed(sample=0, encode_seconds=0.0, pending=500)
 
         assert report.chunks_per_second == 0.0
         assert report.projected_seconds == 0.0
         assert "unknown" in render(report)
+
+    def test_measuring_populates_the_timing_fields(self) -> None:
+        """What measure() is responsible for; how long it took is not asserted."""
+        report = _measure()
+
+        assert report.sample == len(PAIRS)
+        assert report.encode_seconds >= 0.0
+        assert report.pending_chunks == 1_000
 
     def test_the_rerank_cost_is_reported_per_query(self) -> None:
         """The number that decides whether the reranker is usable interactively."""
