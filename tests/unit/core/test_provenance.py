@@ -7,9 +7,17 @@ both look authoritative, which is a worse failure than the duplication is a cost
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
+from signaldesk.core.errors import SignalDeskError
 from signaldesk.core.provenance import code_sha, peak_rss_bytes
+
+try:
+    import resource as resource_module
+except ModuleNotFoundError:  # Windows
+    resource_module = None  # type: ignore[assignment]
 
 pytestmark = pytest.mark.unit
 
@@ -63,10 +71,34 @@ class TestCodeSha:
         assert code_sha() == "unknown"
 
 
+#: The unit suite runs on Windows as well as in the Linux container, and
+#: ``resource`` does not exist there. The measurement is asserted where it can be
+#: taken; the refusal is asserted everywhere, by simulating the missing module.
+on_unix = pytest.mark.skipif(
+    not hasattr(resource_module, "getrusage"),
+    reason="resource is Unix-only and the pipeline runs in the Linux container",
+)
+
+
 class TestPeakRss:
+    @on_unix
     def test_it_reports_a_positive_number_of_bytes(self) -> None:
         assert peak_rss_bytes() > 0
 
+    @on_unix
     def test_it_is_reported_in_bytes_not_kilobytes(self) -> None:
         """ru_maxrss is kilobytes on Linux; a raw value would understate by 1024."""
         assert peak_rss_bytes() > 1024 * 1024
+
+    def test_a_platform_without_resource_refuses_rather_than_reporting_zero(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A fabricated measurement in a run record is worse than a refusal.
+
+        Simulated rather than skipped off Unix, so the branch that Windows takes
+        is covered by the suite that runs on Linux too.
+        """
+        monkeypatch.setitem(sys.modules, "resource", None)
+
+        with pytest.raises(SignalDeskError, match="Unix-only"):
+            peak_rss_bytes()

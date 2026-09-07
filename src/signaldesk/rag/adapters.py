@@ -35,10 +35,19 @@ declares one label so its logits are ``(n, 1)``. The dimension assertion in
 Every class here carries ``pragma: no cover`` on its own line, which excludes the
 whole body. That is the honest marker: these bodies are unreachable in CI, and
 the count of lines under it is the number worth keeping small.
+
+torch and transformers are reached through ``importlib`` rather than an import
+statement. They are in the ``ml`` extra, so they exist in the container and not
+in continuous integration, and a plain import makes the type checker say
+different things in the two places - a missing module in one, an untyped call in
+the other, and an inline ignore that is correct in one and unused in the other. A
+module resolved by name is ``Any`` in both, so the gate reports the same thing
+wherever it runs, which is the only property that makes it worth having.
 """
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Sequence
 from typing import Any
 
@@ -59,12 +68,12 @@ class _MedCptEncoder:  # pragma: no cover - needs torch, absent from CI
     """
 
     def __init__(self, model_id: str, *, max_length: int = MAX_LENGTH) -> None:
-        from transformers import AutoModel, AutoTokenizer
+        transformers: Any = importlib.import_module("transformers")
 
         self._model_id = model_id
         self._max_length = max_length
-        self._tokenizer = AutoTokenizer.from_pretrained(model_id)  # type: ignore[no-untyped-call]
-        self._model = AutoModel.from_pretrained(model_id).eval()
+        self._tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
+        self._model = transformers.AutoModel.from_pretrained(model_id).eval()
 
     @property
     def model_id(self) -> str:
@@ -95,7 +104,7 @@ class _MedCptEncoder:  # pragma: no cover - needs torch, absent from CI
         [CLS] rather than mean pooling because that is what MedCPT's own card
         does: the representation is the first position's last hidden state.
         """
-        import torch
+        torch: Any = importlib.import_module("torch")
 
         with torch.no_grad():
             encoded = self._tokenizer(
@@ -127,12 +136,14 @@ class MedCptCrossEncoder:  # pragma: no cover - needs torch, absent from CI
     """Scores a query against candidate texts jointly."""
 
     def __init__(self, model_id: str, *, max_length: int = MAX_LENGTH) -> None:
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+        transformers: Any = importlib.import_module("transformers")
 
         self._model_id = model_id
         self._max_length = max_length
-        self._tokenizer = AutoTokenizer.from_pretrained(model_id)  # type: ignore[no-untyped-call]
-        self._model = AutoModelForSequenceClassification.from_pretrained(model_id).eval()
+        self._tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
+        self._model = transformers.AutoModelForSequenceClassification.from_pretrained(
+            model_id
+        ).eval()
 
     @property
     def model_id(self) -> str:
@@ -140,7 +151,7 @@ class MedCptCrossEncoder:  # pragma: no cover - needs torch, absent from CI
 
     def score(self, query: str, texts: Sequence[str]) -> FloatArray:
         """One logit per text. Batching is the caller's job; see rag.embed."""
-        import torch
+        torch: Any = importlib.import_module("torch")
 
         with torch.no_grad():
             encoded = self._tokenizer(
