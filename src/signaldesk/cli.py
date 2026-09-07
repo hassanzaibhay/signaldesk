@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, NoReturn
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn
 
 import typer
 
@@ -770,24 +770,212 @@ def index_sparse() -> None:
     typer.echo(f"written to: {path}")
 
 
+def _set_torch_threads(threads: int) -> int:
+    """Use every core the container has, rather than torch's default.
+
+    torch defaults to fewer threads than this container has cores, which costs
+    throughput on a job measured in hours for no reason. Returns what was set.
+    """
+    import torch
+
+    torch.set_num_threads(threads)
+    return int(torch.get_num_threads())
+
+
+def _encode_sample(encoder: Any, inputs: Any, batch_size: int) -> Any:
+    """Encode a whole sample through the covered batching path."""
+    from signaldesk.rag.embed import embed_pairs
+    from signaldesk.web.documents.models import EMBEDDING_DIMENSIONS
+
+    return embed_pairs(
+        encoder, inputs, expected_dimensions=EMBEDDING_DIMENSIONS, batch_size=batch_size
+    )
+
+
+@index_app.command("benchmark")
+def index_benchmark(
+    chunks: Annotated[int, typer.Option("--chunks", help="How many real chunks to time.")] = 256,
+    threads: Annotated[
+        int, typer.Option("--threads", help="Torch threads. Defaults to every core.")
+    ] = 0,
+    batch_size: Annotated[int, typer.Option("--batch-size", help="Texts per pass.")] = 16,
+) -> None:
+    """Time the real encoders on real chunks, and project the corpus run.
+
+    Writes nothing. Throughput is a property of this machine, not of the corpus,
+    and evals/history is for the second kind of fact.
+
+    Run this before committing to an embed. It reports measured throughput and a
+    projected total, and exits non-zero if the model's output width disagrees
+    with the embedding column or if any sampled chunk would be truncated by the
+    encoder. Both are defects to fix before a multi-hour run, not after one.
+
+    A first run downloads roughly 900 MB of weights into HF_HOME and takes a few
+    minutes; later runs load from that cache.
+    """
+    import os
+    import time
+
+    _setup_django()
+    from signaldesk.core.config import get_settings
+    from signaldesk.core.provenance import peak_rss_bytes
+    from signaldesk.rag.adapters import MAX_LENGTH, MedCptArticleEncoder, MedCptCrossEncoder
+    from signaldesk.rag.embed import document_pair
+    from signaldesk.rag.index import benchmark
+    from signaldesk.web.documents.models import EMBEDDING_DIMENSIONS, LabelChunk, SectionCode
+
+    settings = get_settings()
+    sample = list(LabelChunk.objects.order_by("id").values_list("section_code", "text")[:chunks])
+    if not sample:
+        typer.echo(
+            "there are no chunks to benchmark. Run 'signaldesk index chunk' first: the "
+            "projection needs a real chunk count and there is not one yet.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    typer.echo(f"torch threads: {_set_torch_threads(threads or os.cpu_count() or 1)}")
+
+    started = time.monotonic()
+    encoder = MedCptArticleEncoder(settings.embedding_model)
+    cross_encoder = MedCptCrossEncoder(settings.reranker_model)
+    load_seconds = time.monotonic() - started
+
+    texts = [text for _code, text in sample]
+    pairs = [document_pair(SectionCode(code).label, text) for code, text in sample]
+
+    report = benchmark.measure(
+        texts,
+        pairs,
+        token_lengths=encoder.token_lengths,
+        encode=lambda inputs: _encode_sample(encoder, inputs, batch_size),
+        score=cross_encoder.score,
+        pending_chunks=LabelChunk.objects.exclude(
+            embeddings__model=settings.embedding_model
+        ).count(),
+        rerank_candidates=settings.dense_top_k + settings.sparse_top_k,
+        load_seconds=load_seconds,
+        peak_rss_bytes=peak_rss_bytes(),
+        limit=MAX_LENGTH,
+        expected_dimensions=EMBEDDING_DIMENSIONS,
+    )
+    typer.echo(benchmark.render(report))
+    if report.blocked:
+        raise typer.Exit(code=1)
+
+
+@index_app.command("embed")
+def index_embed(
+    limit: Annotated[
+        int, typer.Option("--limit", help="Stop after this many chunks. 0 means all.")
+    ] = 0,
+    threads: Annotated[
+        int, typer.Option("--threads", help="Torch threads. Defaults to every core.")
+    ] = 0,
+    batch_size: Annotated[int, typer.Option("--batch-size", help="Texts per pass.")] = 16,
+) -> None:
+    """Embed every chunk that has no vector yet.
+
+    Resumable and safe to interrupt. The work queue is the set of chunks with no
+    embedding for this model, re-derived every batch, so stopping and restarting
+    loses at most one batch and can neither skip a chunk nor write one twice.
+
+    Multi-hour on a machine with no accelerator. Run 'index benchmark' first for
+    a measured projection; --limit bounds a first pass.
+    """
+    import os
+
+    _setup_django()
+    from signaldesk.core.config import get_settings
+    from signaldesk.rag.adapters import MedCptArticleEncoder
+    from signaldesk.rag.index.corpus import embed_pending
+
+    settings = get_settings()
+    typer.echo(f"torch threads: {_set_torch_threads(threads or os.cpu_count() or 1)}")
+
+    # Loaded before any work starts, so a failed or interrupted download costs
+    # seconds rather than failing forty thousand chunks into a run.
+    encoder = MedCptArticleEncoder(settings.embedding_model)
+    run = embed_pending(encoder, limit=limit or None, batch_size=batch_size, settings=settings)
+    for key, value in run.as_dict().items():
+        typer.echo(f"{key}: {value}")
+    if run.remaining:
+        typer.echo("")
+        typer.echo(f"{run.remaining} chunks still have no vector. Re-run to continue.")
+
+
 @index_app.command("build")
 def index_build(
     force: Annotated[bool, typer.Option("--force", help="Re-chunk existing sections.")] = False,
+    dense: Annotated[
+        bool, typer.Option("--dense/--no-dense", help="Embed inline after chunking.")
+    ] = False,
+    limit: Annotated[int, typer.Option("--limit", help="Cap chunks embedded.")] = 0,
 ) -> None:
-    """Chunk the label corpus and build the sparse index.
+    """Chunk the corpus, build the sparse index, and record the run.
 
-    The dense half - MedCPT embeddings into pgvector - is not wired here yet.
-    Its two model adapters are the only part of retrieval that cannot be
-    exercised in continuous integration, which installs no torch, so they land
-    separately rather than inside this change. Until then this command builds
-    everything that can be built without a model and says so rather than
-    reporting a complete index.
+    The dense half is off by default: this command is otherwise a twenty-minute
+    job and embedding is a multi-hour one. --dense runs it inline and
+    'index embed' runs it alone.
+
+    Either way an artifact lands under evals/history recording what exists at the
+    end, including how many chunks still have no vector. That field is what makes
+    an interrupted run visible in its own record instead of looking finished.
     """
-    index_chunk(force=force)
-    index_sparse()
+    import time
+
+    _setup_django()
+    from signaldesk.core.config import get_settings
+    from signaldesk.rag.index import artifact
+    from signaldesk.rag.index.corpus import build_sparse_index, chunk_corpus
+
+    settings = get_settings()
+    started = time.monotonic()
+    run_id = artifact.new_run_id()
+
+    chunk_run = chunk_corpus(force=force)
+    for key, value in chunk_run.as_dict().items():
+        typer.echo(f"{key}: {value}")
+
+    indexed, path = build_sparse_index()
+    typer.echo(f"sparse chunks indexed: {indexed}")
+
+    embedding: dict[str, object] = {
+        "model": settings.embedding_model,
+        "chunks_embedded_this_run": 0,
+        "ran": False,
+    }
+    if dense:
+        from signaldesk.rag.adapters import MedCptArticleEncoder
+        from signaldesk.rag.index.corpus import embed_pending
+
+        embed_run = embed_pending(
+            MedCptArticleEncoder(settings.embedding_model),
+            limit=limit or None,
+            settings=settings,
+        )
+        embedding = {**embed_run.as_dict(), "ran": True}
+        for key, value in embed_run.as_dict().items():
+            typer.echo(f"{key}: {value}")
+
+    written = artifact.write(
+        artifact.collect(
+            run_id=run_id,
+            params={
+                "chunk_target_tokens": settings.chunk_target_tokens,
+                "chunk_overlap_tokens": settings.chunk_overlap_tokens,
+                "embedding_model": settings.embedding_model,
+                "reranker_model": settings.reranker_model,
+            },
+            chunking=chunk_run.as_dict(),
+            embedding=embedding,
+            sparse_chunks=indexed,
+            sparse_path=Path(path),
+            seconds=time.monotonic() - started,
+        )
+    )
     typer.echo("")
-    typer.echo("dense index: not built. The encoder adapter is not implemented yet,")
-    typer.echo("so retrieval runs sparse-only until it is.")
+    typer.echo(f"artifact: {written}")
 
 
 def _run_retrieval_suite() -> None:

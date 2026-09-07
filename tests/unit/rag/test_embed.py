@@ -10,14 +10,22 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from tests.conftest import HashingEncoder, WrongWidthEncoder
+from tests.conftest import (
+    HashingDocumentEncoder,
+    HashingEncoder,
+    OverlapCrossEncoder,
+    WrongWidthEncoder,
+)
 
 from signaldesk.rag.embed import (
     EmbeddingError,
     assert_dimensions,
     batched,
+    document_pair,
+    embed_pairs,
     embed_texts,
     normalize_rows,
+    score_in_batches,
 )
 
 pytestmark = pytest.mark.unit
@@ -127,3 +135,109 @@ class TestEmbedding:
         )
 
         assert vectors[0] @ vectors[1] > vectors[0] @ vectors[2]
+
+
+class TestDocumentPairs:
+    """The two segments the article encoder is fed for one chunk."""
+
+    def test_the_section_name_leads(self) -> None:
+        """MedCPT's article half is trained on [title, abstract]; the section
+        name is the analogue of the title and is the distinction labeledness
+        turns on."""
+        assert document_pair("Boxed warning", "Lactic acidosis.") == (
+            "Boxed warning",
+            "Lactic acidosis.",
+        )
+
+    def test_both_segments_are_stripped(self) -> None:
+        assert document_pair("  Warnings  ", "  text  ") == ("Warnings", "text")
+
+    def test_the_same_body_under_two_sections_gives_two_pairs(self) -> None:
+        body = "Lactic acidosis has been reported."
+
+        assert document_pair("Boxed warning", body) != document_pair("Adverse reactions", body)
+
+
+class TestEmbeddingPairs:
+    def test_pairs_are_embedded_in_order_and_normalised(self) -> None:
+        vectors = embed_pairs(
+            HashingDocumentEncoder(),
+            [("Warnings", text) for text in TEXTS],
+            expected_dimensions=768,
+        )
+
+        assert vectors.shape == (len(TEXTS), 768)
+        assert np.allclose(np.linalg.norm(vectors, axis=1), 1.0)
+
+    def test_no_pairs_gives_an_empty_matrix_of_the_right_width(self) -> None:
+        assert embed_pairs(HashingDocumentEncoder(), [], expected_dimensions=768).shape == (0, 768)
+
+    def test_batching_does_not_change_the_result(self) -> None:
+        encoder = HashingDocumentEncoder()
+        pairs = [("Warnings", text) for text in TEXTS]
+
+        assert np.allclose(
+            embed_pairs(encoder, pairs, expected_dimensions=768, batch_size=1),
+            embed_pairs(encoder, pairs, expected_dimensions=768, batch_size=99),
+        )
+
+    def test_the_dimension_assertion_fires_on_the_first_batch(self) -> None:
+        """A corpus run must not do hours of work before noticing a mismatch."""
+        calls: list[int] = []
+
+        class Counting(HashingDocumentEncoder):
+            def __init__(self) -> None:
+                super().__init__(dimensions=384)
+
+            def encode(self, pairs):  # type: ignore[no-untyped-def]
+                calls.append(len(pairs))
+                return super().encode(pairs)
+
+        with pytest.raises(EmbeddingError, match="384-dimensional"):
+            embed_pairs(
+                Counting(),
+                [("Warnings", text) for text in TEXTS],
+                expected_dimensions=768,
+                batch_size=1,
+            )
+
+        assert calls == [1]
+
+
+class TestScoringInBatches:
+    def test_scores_come_back_in_text_order(self) -> None:
+        scores = score_in_batches(
+            OverlapCrossEncoder(), "lactic acidosis", ["lactic acidosis", "rash", "acidosis"]
+        )
+
+        assert list(scores) == [2.0, 0.0, 1.0]
+
+    def test_batching_does_not_change_the_result(self) -> None:
+        """The adapter sees small batches; the caller sees one array."""
+        texts = ["lactic acidosis", "rash", "acidosis", "hepatic failure"]
+        encoder = OverlapCrossEncoder()
+
+        assert np.allclose(
+            score_in_batches(encoder, "lactic acidosis", texts, batch_size=1),
+            score_in_batches(encoder, "lactic acidosis", texts, batch_size=99),
+        )
+
+    def test_no_texts_scores_nothing(self) -> None:
+        assert score_in_batches(OverlapCrossEncoder(), "q", []).shape == (0,)
+
+    def test_a_score_count_that_does_not_match_the_batch_is_refused(self) -> None:
+        class Short(OverlapCrossEncoder):
+            def score(self, query, texts):  # type: ignore[no-untyped-def]
+                return super().score(query, texts)[:-1]
+
+        with pytest.raises(EmbeddingError, match="correspond by position"):
+            score_in_batches(Short(), "q", ["a", "b"], batch_size=2)
+
+    def test_a_two_dimensional_return_is_flattened(self) -> None:
+        """A cross-encoder with one label returns (n, 1); the ranking wants (n,)."""
+
+        class Column(OverlapCrossEncoder):
+            def score(self, query, texts):  # type: ignore[no-untyped-def]
+                return super().score(query, texts).reshape(-1, 1)
+
+        assert score_in_batches(Column(), "lactic", ["lactic", "rash"]).shape == (2,)

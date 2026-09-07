@@ -136,3 +136,26 @@ def encoder() -> HashingEncoder:
 @pytest.fixture
 def cross_encoder() -> OverlapCrossEncoder:
     return OverlapCrossEncoder()
+
+
+class HashingDocumentEncoder(HashingEncoder):
+    """The pair-taking half of the stub pair.
+
+    MedCPT's article encoder is fed two segments; this joins them before
+    hashing, so a chunk whose section name differs embeds differently, which is
+    the property the pair exists to create.
+    """
+
+    def __init__(
+        self, dimensions: int = 768, model_id: str = "stub/hashing-document-encoder"
+    ) -> None:
+        super().__init__(dimensions=dimensions, model_id=model_id)
+
+    def encode(self, pairs: Sequence[tuple[str, str]]) -> NDArray[np.float64]:  # type: ignore[override]
+        return super().encode([" ".join(pair) for pair in pairs])
+
+
+@pytest.fixture
+def document_encoder() -> HashingDocumentEncoder:
+    """A deterministic document encoder of the width the column holds."""
+    return HashingDocumentEncoder()

@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 from tests.conftest import OverlapCrossEncoder
 
+from signaldesk.rag.embed import EmbeddingError
 from signaldesk.rag.retrieve import Fused, reciprocal_rank_fusion, rerank
 
 pytestmark = pytest.mark.unit
@@ -114,7 +115,8 @@ class TestRerank:
         assert rerank("q", (), {}, OverlapCrossEncoder(), top_k=8) == ()
 
     def test_a_score_count_that_does_not_match_the_candidates_is_refused(self) -> None:
-        """Scores and candidates correspond by position; a mismatch mislabels all of them."""
+        """Scores and candidates correspond by position; a mismatch mislabels all
+        of them. Raised by score_in_batches, which validates every batch."""
 
         class Short(OverlapCrossEncoder):
             def score(self, query, texts):  # type: ignore[no-untyped-def]
@@ -122,5 +124,5 @@ class TestRerank:
 
         texts = {1: "a", 2: "b", 3: "c"}
 
-        with pytest.raises(ValueError, match="correspond by position"):
+        with pytest.raises(EmbeddingError, match="correspond by position"):
             rerank("q", self._candidates(), texts, Short(), top_k=3)

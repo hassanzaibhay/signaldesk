@@ -29,7 +29,7 @@ from dataclasses import dataclass
 
 from signaldesk.core.config import Settings, get_settings
 from signaldesk.core.logging import get_logger
-from signaldesk.rag.embed import CrossEncoder, Encoder, embed_texts
+from signaldesk.rag.embed import CrossEncoder, Encoder, embed_texts, score_in_batches
 from signaldesk.rag.index import dense, sparse
 from signaldesk.web.documents.models import EMBEDDING_DIMENSIONS, LabelChunk
 
@@ -114,13 +114,12 @@ def rerank(
     if not candidates:
         return ()
     ordered = list(candidates)
-    scores = cross_encoder.score(query, [texts[candidate.chunk_id] for candidate in ordered])
-    if len(scores) != len(ordered):
-        message = (
-            f"the cross-encoder returned {len(scores)} scores for {len(ordered)} "
-            "candidates; scores and candidates correspond by position"
-        )
-        raise ValueError(message)
+    # score_in_batches validates each batch's length and therefore the total, so
+    # there is no second check here. Two places enforcing one invariant is one
+    # place too many for them to agree.
+    scores = score_in_batches(
+        cross_encoder, query, [texts[candidate.chunk_id] for candidate in ordered]
+    )
     paired = list(zip(ordered, (float(score) for score in scores), strict=True))
     paired.sort(key=lambda item: (-item[1], -item[0].score, item[0].chunk_id))
     return tuple(paired[:top_k])
@@ -129,7 +128,7 @@ def rerank(
 def retrieve(
     query: str,
     *,
-    encoder: Encoder,
+    query_encoder: Encoder,
     cross_encoder: CrossEncoder | None,
     sparse_index: sparse.SparseIndex,
     embedding_model: str,
@@ -138,6 +137,12 @@ def retrieve(
 ) -> tuple[RetrievedChunk, ...]:
     """Run the whole pipeline for one query.
 
+    ``query_encoder`` is the query-side encoder and nothing else is correct
+    here. MedCPT ships two checkpoints trained together, one for short queries
+    and one for documents, and the parameter was called ``encoder`` until it
+    became possible to pass a real one - at which point the article encoder
+    would have been silently accepted for a job it is not the model for.
+
     ``cross_encoder`` may be None, which runs dense, sparse and fusion and skips
     the rerank. That is a real configuration - it is what an ablation of the
     reranker is - and not a fallback for a missing model.
@@ -145,7 +150,7 @@ def retrieve(
     settings = settings or get_settings()
 
     query_vector = embed_texts(
-        encoder, [query], expected_dimensions=EMBEDDING_DIMENSIONS, batch_size=1
+        query_encoder, [query], expected_dimensions=EMBEDDING_DIMENSIONS, batch_size=1
     )
     dense_hits = dense.search(
         query_vector[0],

@@ -3,10 +3,23 @@ EXEC := $(DC) exec -T web
 
 # The container has no .git - the application does not read the working
 # tree - so the commit is resolved here and passed in on the targets that
-# record it. Only the signals targets use EXEC_SHA. The ingest targets pass
+# record it: the signals targets and the index build. The ingest targets pass
 # no sha and their run artifacts record none, so an ingest artifact cannot be
 # traced to a commit; commit before running one. Tracked as a followup.
-CODE_SHA := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+#
+# Bare, with no redirect and no fallback. GNU Make uses sh.exe when one is on
+# PATH and cmd.exe otherwise, and a PowerShell session has no sh, so the
+# "2>/dev/null || echo unknown" this used to carry did not run a portable
+# command: cmd cannot redirect to /dev/null, the git call failed, the fallback
+# fired, and every artifact written from PowerShell recorded its commit as
+# "unknown" while the same target from bash recorded the real one.
+#
+# Nothing is lost by dropping the fallback. A failed git leaves this empty, and
+# core.provenance.code_sha treats an empty value as unset, tries git itself, and
+# returns "unknown" when that fails too - which it does in the container, where
+# .git is not mounted. One definition of "unknown" rather than two that can
+# disagree about when it applies.
+CODE_SHA := $(shell git rev-parse HEAD)
 # docker compose exec takes its flags before the service name.
 EXEC_SHA := $(DC) exec -T -e SIGNALDESK_CODE_SHA=$(CODE_SHA) web
 
@@ -16,7 +29,8 @@ EXEC_SHA := $(DC) exec -T -e SIGNALDESK_CODE_SHA=$(CODE_SHA) web
         migrate makemigrations superuser fmt lint type hygiene test test-fast cov \
         ingest-faers ingest-labels ingest-labels-check-key ingest-ctgov ingest-pubmed \
         normalize-drugs \
-        build-signals signals-mgps-diagnostic signals-artifact build-index record-cassettes \
+        build-signals signals-mgps-diagnostic signals-artifact build-index \
+        index-benchmark embed-corpus record-cassettes \
         eval-retrieval eval-labeledness eval-briefs eval-signals eval-all \
         demo-data clean reset prune df
 
@@ -112,8 +126,14 @@ signals-mgps-diagnostic:  ## Profile the MGPS likelihood in alpha1 for one run
 signals-artifact:  ## Collect signal runs into one artifact under evals/history/
 	$(EXEC_SHA) signaldesk signals artifact $(ARGS)
 
-build-index:  ## Chunk the label corpus and build the sparse index
-	$(EXEC) signaldesk index build $(ARGS)
+build-index:  ## Chunk the label corpus, build the sparse index, write the artifact
+	$(EXEC_SHA) signaldesk index build $(ARGS)
+
+index-benchmark:  ## Time the encoders on real chunks and project the corpus run
+	$(EXEC) signaldesk index benchmark $(ARGS)
+
+embed-corpus:  ## Embed every chunk that has no vector yet. Resumable, multi-hour
+	$(EXEC_SHA) signaldesk index embed $(ARGS)
 
 record-cassettes:  ## Record model responses for offline CI
 	$(DC) exec web signaldesk evals record-cassettes

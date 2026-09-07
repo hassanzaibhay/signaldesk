@@ -114,6 +114,16 @@ plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
 warn_unreachable = true
 disallow_any_explicit = false
 
+# torch and transformers are in the "ml" extra, which the container installs
+# and continuous integration does not. Without this mypy fails one way in each
+# environment: missing-import in CI, and an unused inline ignore in the
+# container that CI then reports as needed. Treating both as untyped makes the
+# check say the same thing in both places, which is the only useful property a
+# gate can have here.
+[[tool.mypy.overrides]]
+module = ["torch", "torch.*", "transformers", "transformers.*"]
+ignore_missing_imports = true
+
 [tool.django-stubs]
 django_settings_module = "signaldesk.web.config.settings.test"
 

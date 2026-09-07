@@ -22,20 +22,39 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from django.db import transaction
 
 from signaldesk.core.config import Settings, get_settings
 from signaldesk.core.logging import get_logger
 from signaldesk.rag import chunking
-from signaldesk.rag.index import sparse
-from signaldesk.web.documents.models import LabelChunk, LabelChunkOccurrence, LabelSection
+from signaldesk.rag.embed import (
+    DEFAULT_BATCH_SIZE,
+    DocumentEncoder,
+    document_pair,
+    embed_pairs,
+)
+from signaldesk.rag.index import dense, sparse
+from signaldesk.web.documents.models import (
+    EMBEDDING_DIMENSIONS,
+    ChunkEmbedding,
+    LabelChunk,
+    LabelChunkOccurrence,
+    LabelSection,
+    SectionCode,
+)
 
 log = get_logger(__name__)
 
 #: Sections pulled into memory at once. Section lengths vary by orders of
 #: magnitude and the longest are very long, so this is kept small deliberately.
 SECTION_BATCH = 200
+
+#: Chunks fetched and written per resumption cycle. Larger means fewer
+#: queries; smaller means less work lost to an interrupt. Each cycle is one
+#: transaction, so this is also the most a Ctrl-C can discard.
+EMBED_BATCH_ROWS = 256
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,12 +168,20 @@ def chunk_corpus(settings: Settings | None = None, *, force: bool = False) -> Ch
     return run
 
 
-def build_sparse_index(settings: Settings | None = None) -> tuple[int, str]:
+def build_sparse_index(
+    settings: Settings | None = None, *, path: Path | None = None
+) -> tuple[int, str]:
     """Build the BM25 index over every stored chunk. Returns count and path.
 
     Rebuilt whole rather than updated. bm25s computes corpus statistics at index
     time, so an incrementally extended index would score new documents against
     the term frequencies of an older corpus.
+
+    ``path`` overrides where it is written. It exists because without it a test
+    calling this function wrote a real index into the real ``DATA_DIR`` from a
+    test database, leaving chunk ids behind that pointed at rows dropped with
+    that database. An index naming chunks that do not exist is worse than no
+    index, and nothing about it looks wrong until a query runs.
     """
     settings = settings or get_settings()
     rows = list(LabelChunk.objects.order_by("id").values_list("id", "text"))
@@ -165,9 +192,122 @@ def build_sparse_index(settings: Settings | None = None) -> tuple[int, str]:
         )
         raise sparse.SparseIndexError(message)
 
-    path = sparse.build(
+    written = sparse.build(
         [chunk_id for chunk_id, _ in rows],
         [text for _, text in rows],
         settings=settings,
+        path=path,
     )
-    return len(rows), str(path)
+    return len(rows), str(written)
+
+
+@dataclass(frozen=True, slots=True)
+class EmbedRun:
+    """What one embedding pass did."""
+
+    model: str
+    model_revision: str
+    embedded_this_run: int
+    already_embedded: int
+    remaining: int
+    batches: int
+    seconds: float
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "model": self.model,
+            "model_revision": self.model_revision,
+            "chunks_embedded_this_run": self.embedded_this_run,
+            "chunks_already_embedded": self.already_embedded,
+            "chunks_without_embedding": self.remaining,
+            "batches": self.batches,
+            "seconds": round(self.seconds, 2),
+            "chunks_per_second": (
+                round(self.embedded_this_run / self.seconds, 3) if self.seconds > 0 else 0.0
+            ),
+        }
+
+
+def pending_chunks(model: str, limit: int) -> list[tuple[int, str, str]]:
+    """The next chunks with no vector under ``model``: id, section code, text.
+
+    This query is the whole of resumption. There is no cursor, no offset and no
+    manifest row, so there is no position to lose: a chunk is absent from this
+    result only because a row exists for it, and present only because one does
+    not. Embedded and queued are the same fact read two ways, so they cannot
+    disagree.
+
+    Re-derived per batch rather than iterated once. A single iterator over a
+    queryset that the loop is simultaneously writing to is a snapshot whose
+    meaning depends on the isolation level, which is not something resumption
+    should rest on.
+    """
+    return list(
+        LabelChunk.objects.exclude(embeddings__model=model)
+        .order_by("id")
+        .values_list("id", "section_code", "text")[:limit]
+    )
+
+
+def embed_pending(
+    encoder: DocumentEncoder,
+    *,
+    settings: Settings | None = None,
+    limit: int | None = None,
+    batch_rows: int = EMBED_BATCH_ROWS,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> EmbedRun:
+    """Embed every chunk that has no vector for this encoder's model.
+
+    ``limit`` bounds the run, for a first pass that confirms the whole path end
+    to end before committing hours to it. Stopping early is not a failure state:
+    the next run picks up exactly where this one left off, because what it picks
+    up is defined by the data rather than by a record of what happened.
+
+    The dimension assertion runs inside ``embed_pairs`` on the first batch, so a
+    model whose width disagrees with the column fails within seconds rather than
+    after hours of accumulated work.
+    """
+    settings = settings or get_settings()
+    started = time.monotonic()
+    model = encoder.model_id
+    revision = encoder.model_revision
+
+    already = ChunkEmbedding.objects.filter(model=model).count()
+    written = batches = 0
+
+    while limit is None or written < limit:
+        wanted = batch_rows if limit is None else min(batch_rows, limit - written)
+        pending = pending_chunks(model, wanted)
+        if not pending:
+            break
+
+        pairs = [document_pair(SectionCode(code).label, text) for _chunk_id, code, text in pending]
+        vectors = embed_pairs(
+            encoder,
+            pairs,
+            expected_dimensions=EMBEDDING_DIMENSIONS,
+            batch_size=batch_size,
+        )
+        dense.store(
+            [chunk_id for chunk_id, _, _ in pending],
+            vectors,
+            model=model,
+            model_revision=revision,
+        )
+        written += len(pending)
+        batches += 1
+        log.info("rag.embed.progress", model=model, embedded=written, batches=batches)
+
+    remaining = LabelChunk.objects.exclude(embeddings__model=model).count()
+    run = EmbedRun(
+        model=model,
+        model_revision=revision,
+        embedded_this_run=written,
+        already_embedded=already,
+        remaining=remaining,
+        batches=batches,
+        seconds=time.monotonic() - started,
+    )
+    log.info("rag.embed.done", **run.as_dict())
+    return run

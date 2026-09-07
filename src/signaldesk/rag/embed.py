@@ -65,6 +65,31 @@ class Encoder(Protocol):
         ...
 
 
+#: What the article encoder is fed: two segments, tokenized as a pair.
+TextPair = tuple[str, str]
+
+
+@runtime_checkable
+class DocumentEncoder(Protocol):
+    """Turns (section name, chunk body) pairs into dense vectors.
+
+    Separate from ``Encoder`` because MedCPT is asymmetric: the article half is
+    trained on two-segment input and the query half on one. Collapsing them into
+    a single protocol would let the wrong model be passed to either side without
+    anything noticing, which is the defect this split exists to prevent.
+    """
+
+    @property
+    def model_id(self) -> str: ...
+
+    @property
+    def model_revision(self) -> str: ...
+
+    def encode(self, pairs: Sequence[TextPair]) -> FloatArray:
+        """Encode one batch of pairs. Row order matches ``pairs``."""
+        ...
+
+
 @runtime_checkable
 class CrossEncoder(Protocol):
     """Scores a query against candidate texts jointly.
@@ -82,13 +107,18 @@ class CrossEncoder(Protocol):
         ...
 
 
-def batched(texts: Sequence[str], size: int) -> Iterator[Sequence[str]]:
-    """Split ``texts`` into batches of at most ``size``."""
+def batched[Batchable](items: Sequence[Batchable], size: int) -> Iterator[Sequence[Batchable]]:
+    """Split ``items`` into batches of at most ``size``.
+
+    Generic because the two encoder halves batch different things and a
+    second copy of this loop for the sake of an element type would be a
+    second place for an off-by-one to live.
+    """
     if size < 1:
         message = f"batch size must be at least 1, got {size}"
         raise ValueError(message)
-    for start in range(0, len(texts), size):
-        yield texts[start : start + size]
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
 
 
 def assert_dimensions(vectors: FloatArray, expected: int) -> None:
@@ -136,6 +166,34 @@ def normalize_rows(vectors: FloatArray) -> FloatArray:
     return np.asarray(vectors / safe, dtype=np.float64)
 
 
+def document_pair(section_label: str, text: str) -> TextPair:
+    """The two segments the article encoder is fed for one chunk.
+
+    MedCPT's article encoder is trained on ``[title, abstract]``. A chunk has a
+    natural analogue: the section's name and the chunk body. Feeding it that way
+    matches the shape the model saw in training, and it puts "Boxed warning" or
+    "Adverse reactions" in front of the text, which is exactly the distinction
+    the labeledness question turns on.
+
+    The label is the human name, not the storage code: the encoder reads English,
+    and ``boxed_warning`` is not a phrase it was trained on.
+    """
+    return (section_label.strip(), text.strip())
+
+
+def _validated(vectors_out: object, expected_dimensions: int, batch_length: int) -> FloatArray:
+    """One batch's output, checked for width and row count, then normalised."""
+    vectors = np.asarray(vectors_out, dtype=np.float64)
+    assert_dimensions(vectors, expected_dimensions)
+    if vectors.shape[0] != batch_length:
+        message = (
+            f"the encoder returned {vectors.shape[0]} vectors for {batch_length} "
+            "inputs; rows and inputs must correspond by position"
+        )
+        raise EmbeddingError(message)
+    return normalize_rows(vectors)
+
+
 def embed_texts(
     encoder: Encoder,
     texts: Sequence[str],
@@ -150,16 +208,63 @@ def embed_texts(
     """
     if not texts:
         return np.zeros((0, expected_dimensions), dtype=np.float64)
+    return np.vstack(
+        [
+            _validated(encoder.encode(batch), expected_dimensions, len(batch))
+            for batch in batched(texts, batch_size)
+        ]
+    )
+
+
+def embed_pairs(
+    encoder: DocumentEncoder,
+    pairs: Sequence[TextPair],
+    *,
+    expected_dimensions: int,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> FloatArray:
+    """``embed_texts`` for the two-segment article encoder.
+
+    Same batching, same assertion on the first batch, same normalisation. The
+    only difference is what the encoder is handed, which is why the checking is
+    shared rather than copied.
+    """
+    if not pairs:
+        return np.zeros((0, expected_dimensions), dtype=np.float64)
+    return np.vstack(
+        [
+            _validated(encoder.encode(batch), expected_dimensions, len(batch))
+            for batch in batched(pairs, batch_size)
+        ]
+    )
+
+
+def score_in_batches(
+    cross_encoder: CrossEncoder,
+    query: str,
+    texts: Sequence[str],
+    *,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> FloatArray:
+    """Score every text against ``query``, in batches, in ``texts`` order.
+
+    The batching is here rather than in the adapter so that the adapter stays a
+    tokenize-and-forward call with nothing in it worth testing. Reranking hands
+    over the whole fused pool, which is up to ``dense_top_k + sparse_top_k``
+    candidates; one forward pass over all of them at once is a large activation
+    for no benefit on a machine with no accelerator.
+    """
+    if not texts:
+        return np.zeros(0, dtype=np.float64)
 
     blocks = []
     for batch in batched(texts, batch_size):
-        vectors = np.asarray(encoder.encode(batch), dtype=np.float64)
-        assert_dimensions(vectors, expected_dimensions)
-        if vectors.shape[0] != len(batch):
+        scores = np.asarray(cross_encoder.score(query, batch), dtype=np.float64).reshape(-1)
+        if scores.shape[0] != len(batch):
             message = (
-                f"the encoder returned {vectors.shape[0]} vectors for {len(batch)} "
-                "texts; rows and texts must correspond by position"
+                f"the cross-encoder returned {scores.shape[0]} scores for {len(batch)} "
+                "texts; scores and texts must correspond by position"
             )
             raise EmbeddingError(message)
-        blocks.append(normalize_rows(vectors))
-    return np.vstack(blocks)
+        blocks.append(scores)
+    return np.concatenate(blocks)
