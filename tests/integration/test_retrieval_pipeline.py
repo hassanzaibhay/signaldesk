@@ -524,15 +524,33 @@ class TestTheArtifact:
 
         record = self._record(chunking={"ran": True}, embedding={"model": MODEL, "ran": False})
 
-        assert record["dense"]["ran"] is False
-        assert record["dense"]["chunks_without_embedding"] == LabelChunk.objects.count()
+        assert record["dense"]["chunks_without_embedding"] == LabelChunk.objects.count() > 0
 
-    def test_an_embed_only_record_says_it_did_not_chunk(self, corpus) -> None:  # type: ignore[no-untyped-def]
-        """ "This run did not chunk" and "nothing is chunked" are different facts."""
-        record = self._record(chunking={"ran": False})
+    def test_a_chunk_run_reports_that_it_ran(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        """Asserted on what a real run reports, not on a dict the test supplies.
 
-        assert record["corpus"]["ran"] is False
+        collect() splices **chunking into corpus, so a test that passes
+        {"ran": ...} in and then reads it back out of corpus asserts its own
+        argument and holds however the code behaves. The flag has to come from
+        ChunkRun for this to pin anything.
+        """
+        run = chunk_corpus(force=True)
+
+        assert run.as_dict()["ran"] is True
+        assert self._record(chunking=run.as_dict())["corpus"]["ran"] is True
+
+    def test_an_embed_only_record_still_describes_the_corpus(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        """A run that did not chunk still reports the corpus it embedded against.
+
+        Assembled with nothing injected into chunking, so every figure asserted
+        here is one collect() read from the database rather than one this test
+        handed it. "This run did not chunk" and "nothing is chunked" stay
+        distinguishable because the counts are present either way.
+        """
+        record = self._record(chunking={})
+
         assert record["corpus"]["chunks_total"] == LabelChunk.objects.count() > 0
+        assert record["corpus"]["chunk_occurrences"] == LabelChunkOccurrence.objects.count() > 0
 
     def test_it_carries_the_window_the_vectors_were_written_in(self, corpus) -> None:  # type: ignore[no-untyped-def]
         """Corpus-level and first-write-only; see the module docstring."""
