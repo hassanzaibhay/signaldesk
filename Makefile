@@ -30,7 +30,7 @@ EXEC_SHA := $(DC) exec -T -e SIGNALDESK_CODE_SHA=$(CODE_SHA) web
         ingest-faers ingest-labels ingest-labels-check-key ingest-ctgov ingest-pubmed \
         normalize-drugs \
         build-signals signals-mgps-diagnostic signals-artifact build-index \
-        index-benchmark embed-corpus record-cassettes \
+        index-benchmark embed-corpus index-artifact record-cassettes \
         eval-retrieval eval-labeledness eval-briefs eval-signals eval-all \
         demo-data clean reset prune df
 
@@ -134,6 +134,9 @@ index-benchmark:  ## Time the encoders on real chunks and project the corpus run
 
 embed-corpus:  ## Embed every chunk that has no vector yet. Resumable, multi-hour
 	$(EXEC_SHA) signaldesk index embed $(ARGS)
+
+index-artifact:  ## Record what the index is now. Measures only, builds nothing
+	$(EXEC_SHA) signaldesk index artifact $(ARGS)
 
 record-cassettes:  ## Record model responses for offline CI
 	$(DC) exec web signaldesk evals record-cassettes

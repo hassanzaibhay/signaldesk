@@ -11,7 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from signaldesk.rag.index.sparse import IDS_FILENAME, SparseIndex, SparseIndexError, build
+from signaldesk.rag.index.sparse import (
+    IDS_FILENAME,
+    SparseIndex,
+    SparseIndexError,
+    build,
+    indexed_count,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -48,6 +54,19 @@ class TestBuilding:
     def test_building_over_nothing_is_refused(self, tmp_path: Path) -> None:
         with pytest.raises(SparseIndexError, match="zero chunks"):
             build([], [], path=tmp_path / "bm25")
+
+
+class TestCountingWithoutLoading:
+    """What a run that did not build the index can still say about it."""
+
+    def test_it_counts_the_chunks_the_index_covers(self, tmp_path: Path) -> None:
+        build(CHUNK_IDS, TEXTS, path=tmp_path / "bm25")
+
+        assert indexed_count(tmp_path / "bm25") == len(CHUNK_IDS)
+
+    def test_an_absent_index_counts_as_nothing_rather_than_as_zero(self, tmp_path: Path) -> None:
+        """Zero would read as an index over an empty corpus, which is not this."""
+        assert indexed_count(tmp_path / "nothing-here") is None
 
 
 class TestSearching:

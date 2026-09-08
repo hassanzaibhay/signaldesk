@@ -38,6 +38,7 @@ from signaldesk.web.documents.models import (
     EMBEDDING_DIMENSIONS,
     ChunkEmbedding,
     LabelChunk,
+    LabelChunkOccurrence,
     LabelDocument,
     LabelSection,
 )
@@ -117,6 +118,32 @@ class TestChunkingTheCorpus:
         assert LabelChunk.objects.count() == before
         assert run.sections_chunked == 0
         assert run.sections_skipped == len(SECTIONS)
+
+    def test_it_counts_the_chunks_it_created(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        """The counter is the rows in the table, not the rows offered to it.
+
+        bulk_create with ignore_conflicts returns objects carrying no primary
+        key, so a count taken from what it hands back is structurally zero
+        however much work the run did.
+        """
+        run = chunk_corpus(force=True)
+
+        assert LabelChunk.objects.count() == len(SECTIONS)
+        assert run.chunks_created == 0
+        assert run.occurrences_created == 0
+
+    def test_a_first_pass_counts_every_row_it_put_there(self) -> None:
+        """Nothing exists beforehand, so created must equal what is there after."""
+        document = LabelDocument.objects.create(set_id="counted-0000-4a11-9f00-000000000003")
+        for ordinal, (code, text) in enumerate(SECTIONS):
+            LabelSection.objects.create(
+                document=document, section_code=code, ordinal=ordinal, text=text
+            )
+
+        run = chunk_corpus()
+
+        assert run.chunks_created == LabelChunk.objects.count() > 0
+        assert run.occurrences_created == LabelChunkOccurrence.objects.count() > 0
 
     def test_identical_text_across_labels_is_stored_once(self) -> None:
         """Manufacturers relabel the same generic; the sections repeat verbatim."""
@@ -407,7 +434,6 @@ class TestTheArtifact:
             "params": {},
             "chunking": {},
             "embedding": {"model": MODEL},
-            "sparse_chunks": 0,
             "sparse_path": Path("/nonexistent"),
             "seconds": 1.0,
         }
@@ -447,7 +473,6 @@ class TestTheArtifact:
             params={},
             chunking={},
             embedding={"model": MODEL},
-            sparse_chunks=0,
             sparse_path=Path("/nonexistent"),
             seconds=1.0,
         )
@@ -471,3 +496,85 @@ class TestTheArtifact:
         run = embed_pending(HashingDocumentEncoder(), limit=1)
 
         assert run.as_dict()["chunks_without_embedding"] == 3
+
+    def test_the_width_it_reports_is_read_back_from_the_rows(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        """The declared constant and the measured width are separate claims."""
+        document = self._record()
+
+        assert document["dense"]["embedding_dimensions"] == EMBEDDING_DIMENSIONS
+        assert document["dense"]["measured_dimensions"] == EMBEDDING_DIMENSIONS
+        assert document["dense"]["recorded_dimensions"] == EMBEDDING_DIMENSIONS
+        assert document["dense"]["rows_with_unexpected_dimensions"] == 0
+
+    def test_it_says_how_much_of_the_corpus_has_no_vector_on_every_path(self) -> None:
+        """A build that did not embed still has to report the shortfall.
+
+        Taken from the database rather than from an embed run, so a chunk-only
+        build cannot omit it and read as a finished index.
+        """
+        document = LabelDocument.objects.create(set_id="nodense-0000-4a11-9f00-000000000004")
+        for ordinal in range(3):
+            LabelSection.objects.create(
+                document=document,
+                section_code="warnings",
+                ordinal=ordinal,
+                text=f"Observation {ordinal} was recorded during follow up.",
+            )
+        chunk_corpus()
+
+        record = self._record(chunking={"ran": True}, embedding={"model": MODEL, "ran": False})
+
+        assert record["dense"]["ran"] is False
+        assert record["dense"]["chunks_without_embedding"] == LabelChunk.objects.count()
+
+    def test_an_embed_only_record_says_it_did_not_chunk(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        """ "This run did not chunk" and "nothing is chunked" are different facts."""
+        record = self._record(chunking={"ran": False})
+
+        assert record["corpus"]["ran"] is False
+        assert record["corpus"]["chunks_total"] == LabelChunk.objects.count() > 0
+
+    def test_it_carries_the_window_the_vectors_were_written_in(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        """Corpus-level and first-write-only; see the module docstring."""
+        window = self._record()["dense"]["write_window"]
+
+        assert window["first_vector_at"] is not None
+        assert window["last_vector_at"] >= window["first_vector_at"]
+        assert window["seconds"] >= 0
+
+    def test_the_sparse_block_distinguishes_rebuilt_from_merely_present(
+        self, corpus, tmp_path
+    ) -> None:  # type: ignore[no-untyped-def]
+        rows = list(LabelChunk.objects.order_by("id").values_list("id", "text"))
+        sparse.build([i for i, _ in rows], [t for _, t in rows], path=tmp_path / "bm25")
+
+        record = self._record(sparse_path=tmp_path / "bm25", sparse_rebuilt=False)
+
+        assert record["sparse"]["chunks_indexed"] == len(rows)
+        assert record["sparse"]["rebuilt"] is False
+
+    def test_a_record_assembled_afterwards_admits_that_it_was(self, corpus, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """The block is a property of the entry point, not of an argument."""
+        settings = get_settings()
+        written = artifact.reconstruct(run_id="20260907T070358Z", settings=settings, root=tmp_path)
+        document = json.loads(written.read_text(encoding="utf-8"))
+
+        assert written.name == "index_20260907T070358Z.json"
+        assert document["reconstructed"]["written_by"] == "signaldesk index artifact"
+        assert "peak resident memory" in " ".join(document["reconstructed"]["never_captured"])
+        assert "run_window" in " ".join(document["reconstructed"]["never_captured"])
+        assert "run_window" not in document["dense"]
+
+    def test_an_inline_record_never_claims_to_be_reconstructed(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        assert "reconstructed" not in self._record()
+
+    def test_the_naming_evidence_is_measured_rather_than_asserted(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        """What the run id rests on has to be in the file, not in a report."""
+        evidence = artifact.writer_evidence(MODEL, batch_rows=len(SECTIONS))
+
+        assert evidence["writing_transactions"] >= 1
+        assert evidence["out_of_order_transaction_boundaries"] == 0
+        assert evidence["rows_ever_updated_or_deleted"] == 0
+        assert evidence["unaccounted_xids"] == (
+            evidence["xid_span"] - evidence["writing_transactions"]
+        )
