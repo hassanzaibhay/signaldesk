@@ -6,7 +6,8 @@ extra, so every line here is a line no CI run will ever execute; the response is
 to leave nothing here that could be wrong in an interesting way. Batching, L2
 normalisation, the dimension assertion, the pair construction and resumption all
 live in ``rag.embed`` and ``rag.index.corpus``, where a stub encoder exercises
-them.
+them, and the device decision lives in ``rag.device``, where a fake torch module
+exercises it.
 
 What is left is: load a model, tokenize, one forward pass, return an array.
 
@@ -32,6 +33,16 @@ Verified against the published configs rather than assumed: all three are
 declares one label so its logits are ``(n, 1)``. The dimension assertion in
 ``rag.embed`` still runs on the first batch, because a config is not the weights.
 
+``device`` is required and has no default. A default of "cpu" would make a caller
+that forgot to resolve a device produce a record indistinguishable from one that
+chose the cpu deliberately, and the whole point of recording the device is that
+the two are different claims. Loading and the tensor moves are shared by
+``_MedCptModel``; only the auto class and the forward pass differ per role, which
+is why the cross-encoder has no constructor of its own.
+
+The cpu path was verified bit-identical to the pre-device adapter on 8 chunks,
+against a baseline first shown to be reproducible across two runs.
+
 Every class here carries ``pragma: no cover`` on its own line, which excludes the
 whole body. That is the honest marker: these bodies are unreachable in CI, and
 the count of lines under it is the number worth keeping small.
@@ -51,6 +62,7 @@ import importlib
 from collections.abc import Sequence
 from typing import Any
 
+from signaldesk.rag.device import DeviceChoice, autocast_context
 from signaldesk.stats.types import FloatArray
 
 #: The encoders' positional limit. Longer input is truncated by the tokenizer,
@@ -59,25 +71,46 @@ from signaldesk.stats.types import FloatArray
 MAX_LENGTH = 512
 
 
-class _MedCptEncoder:  # pragma: no cover - needs torch, absent from CI
-    """Shared loading and forward pass for the two bi-encoder halves.
+class _MedCptModel:  # pragma: no cover - needs torch, absent from CI
+    """Loading a checkpoint onto a device. Shared by all three roles.
+
+    The roles differ in which transformers auto class builds the model and in
+    what the forward pass does with the output. Neither difference is worth a
+    second copy of the loading, which is what this class exists to avoid.
+    """
+
+    #: The transformers auto class this role loads through.
+    _AUTO_CLASS = "AutoModel"
+
+    def __init__(
+        self,
+        model_id: str,
+        *,
+        device: DeviceChoice,
+        max_length: int = MAX_LENGTH,
+    ) -> None:
+        transformers: Any = importlib.import_module("transformers")
+
+        self._model_id = model_id
+        self._max_length = max_length
+        self._device = device
+        self._tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
+        self._model = (
+            getattr(transformers, self._AUTO_CLASS).from_pretrained(model_id).eval().to(device.name)
+        )
+
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+
+class _MedCptEncoder(_MedCptModel):  # pragma: no cover - needs torch
+    """Shared tokenize-and-forward for the two bi-encoder halves.
 
     They differ only in what they hand the tokenizer - a pair or a single text -
     so the part that differs is one line in each subclass and the part that does
     not is written once.
     """
-
-    def __init__(self, model_id: str, *, max_length: int = MAX_LENGTH) -> None:
-        transformers: Any = importlib.import_module("transformers")
-
-        self._model_id = model_id
-        self._max_length = max_length
-        self._tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
-        self._model = transformers.AutoModel.from_pretrained(model_id).eval()
-
-    @property
-    def model_id(self) -> str:
-        return self._model_id
 
     @property
     def model_revision(self) -> str:
@@ -103,10 +136,16 @@ class _MedCptEncoder:  # pragma: no cover - needs torch, absent from CI
 
         [CLS] rather than mean pooling because that is what MedCPT's own card
         does: the representation is the first position's last hidden state.
+
+        ``.cpu()`` before ``.float()``: under fp16 that moves two bytes per
+        element across the bus instead of four. On the cpu path both are no-ops,
+        as is the ``.to()`` above them and the autocast context around them,
+        which is what lets this run produce the same vectors the pre-device
+        version did.
         """
         torch: Any = importlib.import_module("torch")
 
-        with torch.no_grad():
+        with torch.no_grad(), autocast_context(torch, self._device):
             encoded = self._tokenizer(
                 tokenizer_input,
                 truncation=True,
@@ -114,8 +153,9 @@ class _MedCptEncoder:  # pragma: no cover - needs torch, absent from CI
                 max_length=self._max_length,
                 return_tensors="pt",
             )
+            encoded = encoded.to(self._device.name)
             hidden = self._model(**encoded).last_hidden_state[:, 0, :]
-        return hidden.numpy()  # type: ignore[no-any-return]
+        return hidden.cpu().float().numpy()  # type: ignore[no-any-return]
 
 
 class MedCptArticleEncoder(_MedCptEncoder):  # pragma: no cover - needs torch
@@ -132,28 +172,16 @@ class MedCptQueryEncoder(_MedCptEncoder):  # pragma: no cover - needs torch
         return self._forward(list(texts))
 
 
-class MedCptCrossEncoder:  # pragma: no cover - needs torch, absent from CI
+class MedCptCrossEncoder(_MedCptModel):  # pragma: no cover - needs torch, absent from CI
     """Scores a query against candidate texts jointly."""
 
-    def __init__(self, model_id: str, *, max_length: int = MAX_LENGTH) -> None:
-        transformers: Any = importlib.import_module("transformers")
-
-        self._model_id = model_id
-        self._max_length = max_length
-        self._tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
-        self._model = transformers.AutoModelForSequenceClassification.from_pretrained(
-            model_id
-        ).eval()
-
-    @property
-    def model_id(self) -> str:
-        return self._model_id
+    _AUTO_CLASS = "AutoModelForSequenceClassification"
 
     def score(self, query: str, texts: Sequence[str]) -> FloatArray:
         """One logit per text. Batching is the caller's job; see rag.embed."""
         torch: Any = importlib.import_module("torch")
 
-        with torch.no_grad():
+        with torch.no_grad(), autocast_context(torch, self._device):
             encoded = self._tokenizer(
                 [[query, text] for text in texts],
                 truncation=True,
@@ -161,7 +189,8 @@ class MedCptCrossEncoder:  # pragma: no cover - needs torch, absent from CI
                 max_length=self._max_length,
                 return_tensors="pt",
             )
+            encoded = encoded.to(self._device.name)
             # squeeze(1) because the checkpoint declares a single label, so the
             # logits arrive as (n, 1) and the ranking wants (n,).
             logits = self._model(**encoded).logits.squeeze(dim=1)
-        return logits.numpy()  # type: ignore[no-any-return]
+        return logits.cpu().float().numpy()  # type: ignore[no-any-return]

@@ -30,10 +30,14 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 
 from signaldesk.core.errors import SignalDeskError
+from signaldesk.rag.device import CPU, surfacing_oom
 from signaldesk.stats.types import FloatArray
 
-#: Texts per forward pass. Small because the container has four CPUs and no
-#: accelerator, and a large batch there buys nothing while raising peak memory.
+#: Texts per forward pass when no caller says otherwise. Small because the
+#: container has four CPUs and no accelerator, and a large batch there buys
+#: nothing while raising peak memory. A caller that resolved a device takes its
+#: size from rag.device.encode_batch_size instead, which is the same number on
+#: the cpu.
 DEFAULT_BATCH_SIZE = 16
 
 
@@ -200,20 +204,25 @@ def embed_texts(
     *,
     expected_dimensions: int,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    device: str = CPU,
 ) -> FloatArray:
     """Encode every text, validated and normalised, in ``texts`` order.
 
     The assertion runs per batch rather than once at the end, so a mismatch
     costs one batch of work and not the whole corpus.
+
+    ``device`` names the device for the out-of-memory message and nothing else;
+    where the encoder actually runs was decided when it was constructed.
     """
     if not texts:
         return np.zeros((0, expected_dimensions), dtype=np.float64)
-    return np.vstack(
-        [
-            _validated(encoder.encode(batch), expected_dimensions, len(batch))
-            for batch in batched(texts, batch_size)
-        ]
-    )
+    with surfacing_oom(batch_size=batch_size, device=device):
+        return np.vstack(
+            [
+                _validated(encoder.encode(batch), expected_dimensions, len(batch))
+                for batch in batched(texts, batch_size)
+            ]
+        )
 
 
 def embed_pairs(
@@ -222,6 +231,7 @@ def embed_pairs(
     *,
     expected_dimensions: int,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    device: str = CPU,
 ) -> FloatArray:
     """``embed_texts`` for the two-segment article encoder.
 
@@ -231,12 +241,13 @@ def embed_pairs(
     """
     if not pairs:
         return np.zeros((0, expected_dimensions), dtype=np.float64)
-    return np.vstack(
-        [
-            _validated(encoder.encode(batch), expected_dimensions, len(batch))
-            for batch in batched(pairs, batch_size)
-        ]
-    )
+    with surfacing_oom(batch_size=batch_size, device=device):
+        return np.vstack(
+            [
+                _validated(encoder.encode(batch), expected_dimensions, len(batch))
+                for batch in batched(pairs, batch_size)
+            ]
+        )
 
 
 def score_in_batches(
@@ -245,6 +256,7 @@ def score_in_batches(
     texts: Sequence[str],
     *,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    device: str = CPU,
 ) -> FloatArray:
     """Score every text against ``query``, in batches, in ``texts`` order.
 
@@ -258,13 +270,14 @@ def score_in_batches(
         return np.zeros(0, dtype=np.float64)
 
     blocks = []
-    for batch in batched(texts, batch_size):
-        scores = np.asarray(cross_encoder.score(query, batch), dtype=np.float64).reshape(-1)
-        if scores.shape[0] != len(batch):
-            message = (
-                f"the cross-encoder returned {scores.shape[0]} scores for {len(batch)} "
-                "texts; scores and texts must correspond by position"
-            )
-            raise EmbeddingError(message)
-        blocks.append(scores)
+    with surfacing_oom(batch_size=batch_size, device=device):
+        for batch in batched(texts, batch_size):
+            scores = np.asarray(cross_encoder.score(query, batch), dtype=np.float64).reshape(-1)
+            if scores.shape[0] != len(batch):
+                message = (
+                    f"the cross-encoder returned {scores.shape[0]} scores for "
+                    f"{len(batch)} texts; scores and texts must correspond by position"
+                )
+                raise EmbeddingError(message)
+            blocks.append(scores)
     return np.concatenate(blocks)

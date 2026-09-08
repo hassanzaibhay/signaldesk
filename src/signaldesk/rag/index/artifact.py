@@ -72,6 +72,8 @@ NEVER_CAPTURED = (
     "run_window: no started_at was captured, so the process start and end are "
     "unrecoverable. Runs from this change onward record it.",
     "the batch count as the run recorded it",
+    "the device the embed ran on, and the torch and CUDA versions behind it. "
+    "Runs from this change onward record them under dense.",
     "the commit the run was at. code_sha on this record is the commit at the "
     "time it was written, not the time it was run.",
 )

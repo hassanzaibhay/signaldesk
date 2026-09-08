@@ -134,3 +134,56 @@ class TestTheProtocols:
     def test_the_positional_limit_matches_the_published_config(self) -> None:
         """All three checkpoints declare max_position_embeddings of 512."""
         assert adapters.MAX_LENGTH == 512
+
+
+class TestTheDeviceIsChosenByTheCaller:
+    """Every adapter runs where it is told, and is told explicitly.
+
+    The alternative is a default of "cpu" inside the adapter, which would make a
+    caller that forgot to resolve a device look identical in the record to one
+    that resolved cpu deliberately. A required argument makes the omission a
+    TypeError at the call site instead of a wrong line in an artifact.
+    """
+
+    @pytest.mark.parametrize(
+        "adapter",
+        [
+            adapters.MedCptArticleEncoder,
+            adapters.MedCptQueryEncoder,
+            adapters.MedCptCrossEncoder,
+        ],
+    )
+    def test_each_adapter_takes_a_device(self, adapter: type) -> None:
+        parameter = inspect.signature(adapter.__init__).parameters.get("device")
+
+        assert parameter is not None, f"{adapter.__name__} cannot be pointed at a device"
+
+    @pytest.mark.parametrize(
+        "adapter",
+        [
+            adapters.MedCptArticleEncoder,
+            adapters.MedCptQueryEncoder,
+            adapters.MedCptCrossEncoder,
+        ],
+    )
+    def test_the_device_has_no_default(self, adapter: type) -> None:
+        parameter = inspect.signature(adapter.__init__).parameters["device"]
+
+        assert parameter.default is inspect.Parameter.empty, (
+            f"{adapter.__name__} defaults its device, so a caller that never "
+            "resolved one produces a record indistinguishable from a deliberate "
+            "cpu run"
+        )
+
+    @pytest.mark.parametrize(
+        "adapter",
+        [
+            adapters.MedCptArticleEncoder,
+            adapters.MedCptQueryEncoder,
+            adapters.MedCptCrossEncoder,
+        ],
+    )
+    def test_the_device_is_keyword_only(self, adapter: type) -> None:
+        parameter = inspect.signature(adapter.__init__).parameters["device"]
+
+        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY

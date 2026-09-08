@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import click
 import pytest
 import typer.main
 from typer.core import TyperGroup
@@ -129,6 +130,71 @@ def test_the_implemented_index_commands_are_listed() -> None:
     assert result.exit_code == 0
     for command in ("chunk", "sparse", "build"):
         assert command in result.stdout
+
+
+def _index_command(name: str) -> click.Command:
+    """One index subcommand, as click registered it.
+
+    Read off the registered parameters rather than the rendered help, for the
+    reason test_label_ingest_takes_a_scope_cap gives: Rich wraps to the terminal
+    width and emits ANSI escapes, so a substring assertion against that text
+    depends on the terminal it ran in.
+    """
+    group = typer.main.get_command(app)
+    assert isinstance(group, TyperGroup)
+    index = group.commands["index"]
+    assert isinstance(index, TyperGroup)
+    return index.commands[name]
+
+
+@pytest.mark.parametrize("command", ["embed", "build", "benchmark"])
+def test_the_model_commands_take_a_device(command: str) -> None:
+    """Where a model runs is an argument, not something torch decides silently."""
+    device = {param.name: param for param in _index_command(command).params}["device"]
+
+    assert "--device" in device.opts
+    assert device.default == "auto"
+
+
+@pytest.mark.parametrize("command", ["embed", "build", "benchmark"])
+def test_the_device_option_documents_every_value_it_accepts(command: str) -> None:
+    """A reader has to learn the three from the command, not from the source."""
+    device = {param.name: param for param in _index_command(command).params}["device"]
+
+    for value in ("auto", "cpu", "cuda"):
+        assert value in (device.help or "")
+
+
+@pytest.mark.parametrize("command", ["embed", "build", "benchmark"])
+def test_the_model_commands_take_a_precision_flag(command: str) -> None:
+    """fp16 changes vector values, so it is opt-in and off by default."""
+    fp16 = {param.name: param for param in _index_command(command).params}["fp16"]
+
+    assert "--fp16" in fp16.opts
+    assert "--no-fp16" in fp16.secondary_opts
+    assert fp16.default is False
+
+
+def test_build_without_dense_still_runs_with_no_device_flags() -> None:
+    """The existing invocation must not start failing because an option was added.
+
+    --device defaults to auto, so a check that rejected any device option under
+    --no-dense would reject this, which is how the whole chunk-and-sparse path
+    would break on a change that never meant to touch it. This half passes on
+    HEAD, where the option does not exist; it is here to pin the regression the
+    other half could introduce.
+    """
+    result = runner.invoke(app, ["index", "build", "--no-dense", "--help"])
+
+    assert result.exit_code == 0
+
+
+def test_build_without_dense_rejects_an_explicitly_passed_device() -> None:
+    """Silently ignoring it would leave a caller believing a device was chosen."""
+    result = runner.invoke(app, ["index", "build", "--no-dense", "--device", "cpu"])
+
+    assert result.exit_code == 1
+    assert "--dense" in result.stderr
 
 
 def test_demo_load_succeeds_when_the_fixture_directory_is_missing(tmp_path: Path) -> None:
