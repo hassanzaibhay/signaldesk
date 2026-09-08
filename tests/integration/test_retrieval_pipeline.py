@@ -566,7 +566,37 @@ class TestTheArtifact:
         assert "run_window" not in document["dense"]
 
     def test_an_inline_record_never_claims_to_be_reconstructed(self, corpus) -> None:  # type: ignore[no-untyped-def]
-        assert "reconstructed" not in self._record()
+        record = self._record()
+
+        assert "reconstructed" not in record
+        assert record["performance"]["peak_rss_bytes"] > 0
+
+    def test_a_reconstructed_record_carries_no_performance_block(self, corpus, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """The only figures available to it would describe the wrong process.
+
+        Listing peak memory as never captured while carrying a number under that
+        name would have the file contradicting itself.
+        """
+        written = artifact.reconstruct(run_id="20260907T070358Z", root=tmp_path)
+        document = json.loads(written.read_text(encoding="utf-8"))
+
+        assert "performance" not in document
+        assert "wall clock and peak memory" not in document["quotable"]["measured"]
+
+    def test_it_names_the_weights_that_wrote_the_vectors(self, corpus) -> None:  # type: ignore[no-untyped-def]
+        """A vector whose producing revision cannot be named is not traceable."""
+        dense.store(
+            list(LabelChunk.objects.values_list("id", flat=True)),
+            embed_texts(
+                HashingEncoder(),
+                list(LabelChunk.objects.values_list("text", flat=True)),
+                expected_dimensions=EMBEDDING_DIMENSIONS,
+            ),
+            model=MODEL,
+            model_revision="abc123",
+        )
+
+        assert self._record()["dense"]["model_revisions_present"] == ["abc123"]
 
     def test_the_naming_evidence_is_measured_rather_than_asserted(self, corpus) -> None:  # type: ignore[no-untyped-def]
         """What the run id rests on has to be in the file, not in a report."""

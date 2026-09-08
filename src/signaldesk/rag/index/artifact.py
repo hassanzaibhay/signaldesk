@@ -65,7 +65,9 @@ WITHHELD_REASON = (
 #: rather than estimated: an inferred number in an artifact is worse than an
 #: absent one, because only the absent one is obviously absent.
 NEVER_CAPTURED = (
-    "peak resident memory of the embedding process",
+    "peak resident memory of the embedding process. This record carries no "
+    "performance block at all, because the only figures available to it would "
+    "describe the process that measured, not the one that ran.",
     "model load seconds",
     "run_window: no started_at was captured, so the process start and end are "
     "unrecoverable. Runs from this change onward record it.",
@@ -107,6 +109,25 @@ def _directory_bytes(path: Path) -> int:
     if not path.is_dir():
         return 0
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
+
+
+def _revisions(model: str) -> list[str]:
+    """Every weights revision that wrote a vector under ``model``.
+
+    A list rather than a value, because more than one means the table holds
+    output from two sets of weights behind a single model name and the record
+    has to be able to say so. Read from the rows, which is where the writer put
+    it, rather than from the configuration the reader happens to have now.
+    """
+    # order_by() clears Meta.ordering first. Django selects the ordering
+    # columns alongside a DISTINCT, so the model's default ordering would make
+    # every row distinct and return the revision once per vector.
+    return sorted(
+        ChunkEmbedding.objects.filter(model=model)
+        .order_by()
+        .values_list("model_revision", flat=True)
+        .distinct()
+    )
 
 
 def _widths(model: str) -> dict[str, Any]:
@@ -196,6 +217,12 @@ class IndexRun:
     reconstructed: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
+        measured = [
+            "corpus counts",
+            "chunk and embedding counts",
+            "vector width, read back from the stored rows",
+            "index sizes",
+        ]
         document: dict[str, Any] = {
             "artifact": "index",
             "run_id": self.run_id,
@@ -206,21 +233,23 @@ class IndexRun:
             "dense": self.dense,
             "sparse": self.sparse,
             "storage": self.storage,
-            "performance": {
+        }
+
+        # A record assembled afterwards has no performance block. The wall clock
+        # and the peak memory available here are this measuring process's, and a
+        # record that listed peak memory as never captured while carrying a
+        # number under that name would be contradicting itself in one file.
+        if self.reconstructed is None:
+            document["performance"] = {
                 "seconds": round(self.seconds, 2),
                 "peak_rss_bytes": peak_rss_bytes(),
-            },
-            "quotable": {
-                "measured": [
-                    "corpus counts",
-                    "chunk and embedding counts",
-                    "vector width, read back from the stored rows",
-                    "index sizes",
-                    "wall clock and peak memory",
-                ],
-                "withheld": ["retrieval accuracy"],
-                "withheld_reason": WITHHELD_REASON,
-            },
+            }
+            measured.append("wall clock and peak memory")
+
+        document["quotable"] = {
+            "measured": measured,
+            "withheld": ["retrieval accuracy"],
+            "withheld_reason": WITHHELD_REASON,
         }
         if self.reconstructed is not None:
             document["reconstructed"] = self.reconstructed
@@ -324,6 +353,7 @@ def collect(
             "embeddings_total": ChunkEmbedding.objects.filter(model=model).count(),
             "chunks_without_embedding": LabelChunk.objects.exclude(embeddings__model=model).count(),
             "embedding_dimensions": EMBEDDING_DIMENSIONS,
+            "model_revisions_present": _revisions(model),
             **_widths(model),
             "write_window": _write_window(model),
         },
