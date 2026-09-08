@@ -1,0 +1,91 @@
+{
+  "artifact": "index",
+  "code_sha": "358c48ed62f623427c14f444f2b1f5c8c45f32fe",
+  "corpus": {
+    "chunk_occurrences": 201450,
+    "chunks_total": 62263,
+    "label_documents": 13205,
+    "label_sections": 30111,
+    "ran": false
+  },
+  "created_at": "2026-09-08T08:13:07.332316+00:00",
+  "dense": {
+    "chunks_without_embedding": 0,
+    "embedding_dimensions": 768,
+    "embeddings_total": 62263,
+    "measured_dimensions": 768,
+    "model": "ncbi/MedCPT-Article-Encoder",
+    "model_revisions_present": [
+      "d05a736da4bb84ee4057b7f7999485be6ed85465"
+    ],
+    "ran": false,
+    "recorded_dimensions": 768,
+    "rows_with_unexpected_dimensions": 0,
+    "write_window": {
+      "chunks_per_second": 2.152,
+      "first_vector_at": "2026-09-07T07:03:58.606519+00:00",
+      "last_vector_at": "2026-09-07T15:06:04.823356+00:00",
+      "seconds": 28926.22
+    }
+  },
+  "params": {
+    "chunk_overlap_tokens": 80,
+    "chunk_target_tokens": 400,
+    "embedding_model": "ncbi/MedCPT-Article-Encoder",
+    "reranker_model": "ncbi/MedCPT-Cross-Encoder"
+  },
+  "quotable": {
+    "measured": [
+      "corpus counts",
+      "chunk and embedding counts",
+      "vector width, read back from the stored rows",
+      "index sizes"
+    ],
+    "withheld": [
+      "retrieval accuracy"
+    ],
+    "withheld_reason": "No gold set exists. evals/golden/ holds no judgements, so no recall, MRR or nDCG figure has been computed for this project and none may be inferred from a corpus having been indexed. This artifact records what was built."
+  },
+  "reconstructed": {
+    "measured_now": [
+      "corpus counts",
+      "embedding count, model, revision and width",
+      "chunks_without_embedding",
+      "relation and index sizes",
+      "write_window, from chunk_embedding.created_at",
+      "writer_evidence, from chunk_embedding xmin and xmax"
+    ],
+    "never_captured": [
+      "peak resident memory of the embedding process. This record carries no performance block at all, because the only figures available to it would describe the process that measured, not the one that ran.",
+      "model load seconds",
+      "run_window: no started_at was captured, so the process start and end are unrecoverable. Runs from this change onward record it.",
+      "the batch count as the run recorded it",
+      "the commit the run was at. code_sha on this record is the commit at the time it was written, not the time it was run."
+    ],
+    "run_id_rests_on": "xmin structure. The rows fall into one transaction per batch, in perfect batch alignment, with no inverted transaction boundary anywhere in the span, and no row has ever been superseded. That is what names this record for a single run. pg_stat_user_tables could not corroborate it: crash recovery discarded the cumulative statistics at 2026-09-08T07:32:19Z and every counter reads zero, which is absence of evidence rather than evidence of none. The residual is unaccounted_xids - transaction ids inside the span that did not write to this table. Their contents were not measured. It is a bound, not a zero.",
+    "writer_evidence": {
+      "batch_rows": 256,
+      "final_batch_rows": 55,
+      "full_batch_transactions": 243,
+      "out_of_order_transaction_boundaries": 0,
+      "rows_ever_updated_or_deleted": 0,
+      "unaccounted_xids": 36,
+      "writing_transactions": 244,
+      "xid_span": 280
+    },
+    "written_at": "2026-09-08T08:13:07.281100+00:00",
+    "written_by": "signaldesk index artifact"
+  },
+  "run_id": "20260907T070358Z",
+  "sparse": {
+    "chunks_indexed": 62263,
+    "index_bytes": 39039847,
+    "path": "/data/index/bm25",
+    "rebuilt": false
+  },
+  "storage": {
+    "chunk_embedding_bytes": 489381888,
+    "hnsw_index_bytes": 215195648,
+    "label_chunk_bytes": 102629376
+  }
+}
