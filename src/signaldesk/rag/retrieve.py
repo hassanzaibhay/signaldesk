@@ -29,6 +29,7 @@ from dataclasses import dataclass
 
 from signaldesk.core.config import Settings, get_settings
 from signaldesk.core.logging import get_logger
+from signaldesk.rag.device import CPU
 from signaldesk.rag.embed import CrossEncoder, Encoder, embed_texts, score_in_batches
 from signaldesk.rag.index import dense, sparse
 from signaldesk.web.documents.models import EMBEDDING_DIMENSIONS, LabelChunk
@@ -104,12 +105,18 @@ def rerank(
     cross_encoder: CrossEncoder,
     *,
     top_k: int,
+    device: str = CPU,
 ) -> tuple[tuple[Fused, float], ...]:
     """Rescore ``candidates`` jointly against ``query`` and keep the best.
 
     Ties break on the fused order, which is already deterministic, so an
     unhelpful cross-encoder that returns one score for everything degrades to
     the fusion result rather than to an arbitrary one.
+
+    ``device`` names the device an out-of-memory message would report. It is
+    carried rather than inferred because the cross-encoder protocol has no
+    device on it, and a reranker on a card that reported "cpu" when it ran out
+    of memory would send the reader looking in the wrong place.
     """
     if not candidates:
         return ()
@@ -118,7 +125,10 @@ def rerank(
     # there is no second check here. Two places enforcing one invariant is one
     # place too many for them to agree.
     scores = score_in_batches(
-        cross_encoder, query, [texts[candidate.chunk_id] for candidate in ordered]
+        cross_encoder,
+        query,
+        [texts[candidate.chunk_id] for candidate in ordered],
+        device=device,
     )
     paired = list(zip(ordered, (float(score) for score in scores), strict=True))
     paired.sort(key=lambda item: (-item[1], -item[0].score, item[0].chunk_id))
@@ -134,6 +144,7 @@ def retrieve(
     embedding_model: str,
     document_ids: Sequence[int] | None = None,
     settings: Settings | None = None,
+    device: str = CPU,
 ) -> tuple[RetrievedChunk, ...]:
     """Run the whole pipeline for one query.
 
@@ -150,7 +161,11 @@ def retrieve(
     settings = settings or get_settings()
 
     query_vector = embed_texts(
-        query_encoder, [query], expected_dimensions=EMBEDDING_DIMENSIONS, batch_size=1
+        query_encoder,
+        [query],
+        expected_dimensions=EMBEDDING_DIMENSIONS,
+        batch_size=1,
+        device=device,
     )
     dense_hits = dense.search(
         query_vector[0],
@@ -200,7 +215,9 @@ def retrieve(
             for candidate in present[: settings.rerank_top_k]
         )
 
-    reranked = rerank(query, present, texts, cross_encoder, top_k=settings.rerank_top_k)
+    reranked = rerank(
+        query, present, texts, cross_encoder, top_k=settings.rerank_top_k, device=device
+    )
     return tuple(
         RetrievedChunk(
             chunk_id=candidate.chunk_id,

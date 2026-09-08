@@ -30,6 +30,7 @@ from django.db import transaction
 from signaldesk.core.config import Settings, get_settings
 from signaldesk.core.logging import get_logger
 from signaldesk.rag import chunking
+from signaldesk.rag.device import CPU, DeviceChoice
 from signaldesk.rag.embed import (
     DEFAULT_BATCH_SIZE,
     DocumentEncoder,
@@ -55,6 +56,13 @@ SECTION_BATCH = 200
 #: Chunks fetched and written per resumption cycle. Larger means fewer
 #: queries; smaller means less work lost to an interrupt. Each cycle is one
 #: transaction, so this is also the most a Ctrl-C can discard.
+#:
+#: This is the database write batch and it is not the encode batch. They are
+#: separate parameters on purpose and a device default moves only the other one:
+#: the committed record index_20260907T070358Z.json rests on writer_evidence
+#: finding one transaction per 256 rows, and that structure is what names it for
+#: a single run. Changing this invalidates the reasoning behind an artifact that
+#: is already published.
 EMBED_BATCH_ROWS = 256
 
 
@@ -233,6 +241,11 @@ class EmbedRun:
     ``rows_first_written_in_run`` is counted from the table rather than from
     ``embedded_this_run``, so the record says which vectors this process is
     responsible for rather than how many it believes it wrote.
+
+    ``device`` is what the caller resolved. It is optional and its fields are
+    omitted rather than defaulted when it is absent: a run that never resolved a
+    device has no device to report, and recording "cpu" for it would be a claim
+    nothing made.
     """
 
     model: str
@@ -245,10 +258,12 @@ class EmbedRun:
     started_at: datetime
     finished_at: datetime
     rows_first_written_in_run: int
+    device: DeviceChoice | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
             "ran": True,
+            **(self.device.as_dict() if self.device is not None else {}),
             "model": self.model,
             "model_revision": self.model_revision,
             "chunks_embedded_this_run": self.embedded_this_run,
@@ -297,6 +312,7 @@ def embed_pending(
     batch_rows: int = EMBED_BATCH_ROWS,
     batch_size: int = DEFAULT_BATCH_SIZE,
     started_at: datetime | None = None,
+    device: DeviceChoice | None = None,
 ) -> EmbedRun:
     """Embed every chunk that has no vector for this encoder's model.
 
@@ -312,6 +328,11 @@ def embed_pending(
     ``started_at`` is when the caller began, which for the command line is before
     the encoder was constructed. Defaulting it to now measures from here instead
     and so omits the model load, which on a cold cache is minutes.
+
+    ``device`` is recorded on the run and passed to the encode loop, where it
+    names the device in an out-of-memory message. It does not decide where the
+    encoder runs; that was decided when the encoder was constructed, and passing
+    one that disagrees would misreport rather than misroute.
     """
     settings = settings or get_settings()
     started = time.monotonic()
@@ -334,6 +355,7 @@ def embed_pending(
             pairs,
             expected_dimensions=EMBEDDING_DIMENSIONS,
             batch_size=batch_size,
+            device=device.name if device is not None else CPU,
         )
         dense.store(
             [chunk_id for chunk_id, _, _ in pending],
@@ -359,6 +381,7 @@ def embed_pending(
         rows_first_written_in_run=ChunkEmbedding.objects.filter(
             model=model, created_at__gte=began
         ).count(),
+        device=device,
     )
     log.info("rag.embed.done", **run.as_dict())
     return run

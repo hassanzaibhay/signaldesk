@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from signaldesk.ingest.faers.dedup import ChainReport
     from signaldesk.ingest.faers.pipeline import QuarterResult
     from signaldesk.ingest.faers.quarter import Quarter
+    from signaldesk.rag.device import DeviceChoice
 
 log = get_logger(__name__)
 
@@ -73,6 +74,40 @@ app.add_typer(signals_app, name="signals")
 app.add_typer(index_app, name="index")
 app.add_typer(evals_app, name="evals")
 app.add_typer(demo_app, name="demo")
+
+# The three model commands take the same device options, so the help text is
+# written once. "auto" resolves to cuda only when torch reports a usable device
+# and logs which of the three states it found; "cuda" is a hard requirement and
+# fails rather than falling back. See rag.device.
+DeviceOption = Annotated[
+    str,
+    typer.Option(
+        "--device",
+        help=(
+            "Where the model runs: auto, cpu or cuda. auto takes cuda when torch "
+            "reports one and logs why it did not otherwise. cuda fails if no "
+            "device is available rather than falling back to the cpu."
+        ),
+    ),
+]
+Fp16Option = Annotated[
+    bool,
+    typer.Option(
+        "--fp16/--no-fp16",
+        help=(
+            "Run the forward pass in half precision. Off by default: it changes "
+            "vector values, so it is recorded in the artifact when used. Refused "
+            "on the cpu."
+        ),
+    ),
+]
+BatchSizeOption = Annotated[
+    int,
+    typer.Option(
+        "--batch-size",
+        help="Texts per forward pass. 0 takes the default for the resolved device.",
+    ),
+]
 
 
 def _owned_by(prompt: str, stage: str) -> NoReturn:
@@ -770,6 +805,67 @@ def index_sparse() -> None:
     typer.echo(f"written to: {path}")
 
 
+def _refuse_device_without_dense(ctx: typer.Context, *, dense: bool) -> None:
+    """Reject a device option that this invocation will never use.
+
+    Only an explicitly typed flag is rejected. ``--device`` defaults to "auto",
+    so testing the value would reject every plain ``index build``, which is the
+    common invocation and has nothing to do with a device. The parameter source
+    separates "the user asked for this" from "argparse filled it in", and only
+    the first is an error.
+
+    Silently ignoring it is the alternative and it is worse: a caller who typed
+    --device cuda and got a chunk-and-sparse run would have no way to learn the
+    flag did nothing.
+
+    The source is compared by member name rather than against an imported
+    ParameterSource. Typer vendors its own click under typer._click, so the enum
+    this context returns is a different class from click.core.ParameterSource
+    with different member values - COMMANDLINE is 1 in one and 2 in the other -
+    and an identity test against the importable one is false for every input.
+    That failure is silent in exactly the direction that matters: the option
+    would have been accepted and ignored. The member name is the same in both
+    and does not depend on which click a given typer bundles.
+    """
+    if dense:
+        return
+    typed = [
+        name
+        for name in ("device", "fp16")
+        if getattr(ctx.get_parameter_source(name), "name", "") == "COMMANDLINE"
+    ]
+    if not typed:
+        return
+    flags = ", ".join(f"--{name}" for name in typed)
+    typer.echo(
+        f"{flags} was passed without --dense, so no model would be loaded and the "
+        "option would have no effect. Add --dense to embed inline, or drop the "
+        "option. This is refused rather than ignored so that a device you asked "
+        "for is never one you did not get.",
+        err=True,
+    )
+    raise typer.Exit(code=1)
+
+
+def _resolve_device(requested: str, *, fp16: bool) -> DeviceChoice:
+    """Resolve the device, or fail with the reason and no traceback.
+
+    Deferred rather than imported at module scope for the same reason every
+    other import in these commands is: rag.device is cheap, but the symmetry
+    is worth more than the microsecond.
+
+    A DeviceError here is a usage error - a device asked for that cannot be
+    given - and a usage error should read as a sentence, not as a stack.
+    """
+    from signaldesk.rag.device import DeviceError, resolve
+
+    try:
+        return resolve(requested, fp16=fp16)
+    except DeviceError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=1) from error
+
+
 def _set_torch_threads(threads: int) -> int:
     """Use every core the container has, rather than torch's default.
 
@@ -782,13 +878,17 @@ def _set_torch_threads(threads: int) -> int:
     return int(torch.get_num_threads())
 
 
-def _encode_sample(encoder: Any, inputs: Any, batch_size: int) -> Any:
+def _encode_sample(encoder: Any, inputs: Any, batch_size: int, device: str) -> Any:
     """Encode a whole sample through the covered batching path."""
     from signaldesk.rag.embed import embed_pairs
     from signaldesk.web.documents.models import EMBEDDING_DIMENSIONS
 
     return embed_pairs(
-        encoder, inputs, expected_dimensions=EMBEDDING_DIMENSIONS, batch_size=batch_size
+        encoder,
+        inputs,
+        expected_dimensions=EMBEDDING_DIMENSIONS,
+        batch_size=batch_size,
+        device=device,
     )
 
 
@@ -798,7 +898,9 @@ def index_benchmark(
     threads: Annotated[
         int, typer.Option("--threads", help="Torch threads. Defaults to every core.")
     ] = 0,
-    batch_size: Annotated[int, typer.Option("--batch-size", help="Texts per pass.")] = 16,
+    batch_size: BatchSizeOption = 0,
+    device: DeviceOption = "auto",
+    fp16: Fp16Option = False,
 ) -> None:
     """Time the real encoders on real chunks, and project the corpus run.
 
@@ -816,15 +918,21 @@ def index_benchmark(
     import os
     import time
 
+    # Before Django and before the weights: a device that cannot be honoured
+    # should fail in a second, not after a model load.
+    choice = _resolve_device(device, fp16=fp16)
+
     _setup_django()
     from signaldesk.core.config import get_settings
     from signaldesk.core.provenance import peak_rss_bytes
     from signaldesk.rag.adapters import MAX_LENGTH, MedCptArticleEncoder, MedCptCrossEncoder
+    from signaldesk.rag.device import encode_batch_size
     from signaldesk.rag.embed import document_pair
     from signaldesk.rag.index import benchmark
     from signaldesk.web.documents.models import EMBEDDING_DIMENSIONS, LabelChunk, SectionCode
 
     settings = get_settings()
+    batch = encode_batch_size(choice, batch_size)
     sample = list(LabelChunk.objects.order_by("id").values_list("section_code", "text")[:chunks])
     if not sample:
         typer.echo(
@@ -837,8 +945,8 @@ def index_benchmark(
     typer.echo(f"torch threads: {_set_torch_threads(threads or os.cpu_count() or 1)}")
 
     started = time.monotonic()
-    encoder = MedCptArticleEncoder(settings.embedding_model)
-    cross_encoder = MedCptCrossEncoder(settings.reranker_model)
+    encoder = MedCptArticleEncoder(settings.embedding_model, device=choice)
+    cross_encoder = MedCptCrossEncoder(settings.reranker_model, device=choice)
     load_seconds = time.monotonic() - started
 
     texts = [text for _code, text in sample]
@@ -848,7 +956,7 @@ def index_benchmark(
         texts,
         pairs,
         token_lengths=encoder.token_lengths,
-        encode=lambda inputs: _encode_sample(encoder, inputs, batch_size),
+        encode=lambda inputs: _encode_sample(encoder, inputs, batch, choice.name),
         score=cross_encoder.score,
         pending_chunks=LabelChunk.objects.exclude(
             embeddings__model=settings.embedding_model
@@ -872,7 +980,9 @@ def index_embed(
     threads: Annotated[
         int, typer.Option("--threads", help="Torch threads. Defaults to every core.")
     ] = 0,
-    batch_size: Annotated[int, typer.Option("--batch-size", help="Texts per pass.")] = 16,
+    batch_size: BatchSizeOption = 0,
+    device: DeviceOption = "auto",
+    fp16: Fp16Option = False,
 ) -> None:
     """Embed every chunk that has no vector yet.
 
@@ -891,9 +1001,14 @@ def index_embed(
     import time
     from datetime import UTC, datetime
 
+    # Before Django and before the weights: a device that cannot be honoured
+    # should fail in a second, not after a model load.
+    choice = _resolve_device(device, fp16=fp16)
+
     _setup_django()
     from signaldesk.core.config import get_settings
     from signaldesk.rag.adapters import MedCptArticleEncoder
+    from signaldesk.rag.device import encode_batch_size
     from signaldesk.rag.index import artifact
     from signaldesk.rag.index.corpus import embed_pending
 
@@ -907,13 +1022,14 @@ def index_embed(
 
     # Loaded before any work starts, so a failed or interrupted download costs
     # seconds rather than failing forty thousand chunks into a run.
-    encoder = MedCptArticleEncoder(settings.embedding_model)
+    encoder = MedCptArticleEncoder(settings.embedding_model, device=choice)
     run = embed_pending(
         encoder,
         limit=limit or None,
-        batch_size=batch_size,
+        batch_size=encode_batch_size(choice, batch_size),
         settings=settings,
         started_at=started_at,
+        device=choice,
     )
     for key, value in run.as_dict().items():
         typer.echo(f"{key}: {value}")
@@ -934,11 +1050,14 @@ def index_embed(
 
 @index_app.command("build")
 def index_build(
+    ctx: typer.Context,
     force: Annotated[bool, typer.Option("--force", help="Re-chunk existing sections.")] = False,
     dense: Annotated[
         bool, typer.Option("--dense/--no-dense", help="Embed inline after chunking.")
     ] = False,
     limit: Annotated[int, typer.Option("--limit", help="Cap chunks embedded.")] = 0,
+    device: DeviceOption = "auto",
+    fp16: Fp16Option = False,
 ) -> None:
     """Chunk the corpus, build the sparse index, and record the run.
 
@@ -951,6 +1070,13 @@ def index_build(
     an interrupted run visible in its own record instead of looking finished.
     """
     import time
+
+    # Before Django, before any import that touches the ORM: a usage error
+    # should not need a database to be reportable. The device is resolved here
+    # for the same reason - a --dense run that cannot have the device it was
+    # given should fail before it spends twenty minutes chunking.
+    _refuse_device_without_dense(ctx, dense=dense)
+    choice = _resolve_device(device, fp16=fp16) if dense else None
 
     _setup_django()
     from signaldesk.core.config import get_settings
@@ -973,18 +1099,23 @@ def index_build(
         "chunks_embedded_this_run": 0,
         "ran": False,
     }
-    if dense:
+    # A resolved device and --dense are set together above, so this is the dense
+    # branch; written as the None check so the type narrows without an assert.
+    if choice is not None:
         from datetime import UTC, datetime
 
         from signaldesk.rag.adapters import MedCptArticleEncoder
+        from signaldesk.rag.device import encode_batch_size
         from signaldesk.rag.index.corpus import embed_pending
 
         started_at = datetime.now(UTC)
         embed_run = embed_pending(
-            MedCptArticleEncoder(settings.embedding_model),
+            MedCptArticleEncoder(settings.embedding_model, device=choice),
             limit=limit or None,
+            batch_size=encode_batch_size(choice, 0),
             settings=settings,
             started_at=started_at,
+            device=choice,
         )
         embedding = embed_run.as_dict()
         for key, value in embedding.items():

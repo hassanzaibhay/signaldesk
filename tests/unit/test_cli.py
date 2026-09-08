@@ -131,6 +131,48 @@ def test_the_implemented_index_commands_are_listed() -> None:
         assert command in result.stdout
 
 
+@pytest.mark.parametrize("command", ["embed", "build", "benchmark"])
+def test_the_model_commands_take_a_device(command: str) -> None:
+    """Where a model runs is an argument, not something torch decides silently."""
+    result = runner.invoke(app, ["index", command, "--help"])
+
+    assert result.exit_code == 0
+    assert "--device" in result.stdout
+    for value in ("auto", "cpu", "cuda"):
+        assert value in result.stdout
+
+
+@pytest.mark.parametrize("command", ["embed", "build", "benchmark"])
+def test_the_model_commands_take_a_precision_flag(command: str) -> None:
+    """fp16 changes vector values, so it is opt-in and visible in --help."""
+    result = runner.invoke(app, ["index", command, "--help"])
+
+    assert result.exit_code == 0
+    assert "--fp16" in result.stdout
+
+
+def test_build_without_dense_still_runs_with_no_device_flags() -> None:
+    """The existing invocation must not start failing because an option was added.
+
+    --device defaults to auto, so a check that rejected any device option under
+    --no-dense would reject this, which is how the whole chunk-and-sparse path
+    would break on a change that never meant to touch it. This half passes on
+    HEAD, where the option does not exist; it is here to pin the regression the
+    other half could introduce.
+    """
+    result = runner.invoke(app, ["index", "build", "--no-dense", "--help"])
+
+    assert result.exit_code == 0
+
+
+def test_build_without_dense_rejects_an_explicitly_passed_device() -> None:
+    """Silently ignoring it would leave a caller believing a device was chosen."""
+    result = runner.invoke(app, ["index", "build", "--no-dense", "--device", "cpu"])
+
+    assert result.exit_code == 1
+    assert "--dense" in result.stderr
+
+
 def test_demo_load_succeeds_when_the_fixture_directory_is_missing(tmp_path: Path) -> None:
     result = runner.invoke(app, ["demo", "load", "--fixtures", str(tmp_path / "absent")])
     assert result.exit_code == 0
