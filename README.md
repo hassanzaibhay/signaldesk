@@ -68,6 +68,34 @@ delivered. The gap between them is the duplication cost of the scope. A third
 figure, dividing resolving slots by slots, is a double count that this project
 retired, and a test named for it fails if anyone reintroduces it.
 
+**Chunking, MedCPT embedding and the hybrid index.** The label corpus is chunked,
+embedded and indexed for both dense and lexical retrieval. From index run
+`20260907T070358Z`:
+
+| Measure | Value |
+| --- | --- |
+| Chunks indexed | 62,263 |
+| Chunks with no vector | 0 |
+| Vector width | 768, read back from the stored rows |
+| Encoder | `ncbi/MedCPT-Article-Encoder` at `d05a736da4bb84ee4057b7f7999485be6ed85465` |
+| Sparse index | bm25s over the same 62,263 chunk ids |
+| Dense index | pgvector HNSW, built and valid |
+
+No retrieval accuracy figure exists for this index. There is no recall, no MRR
+and no nDCG, because labeledness annotation is deferred: I do not have the
+medical background to judge relevance myself, and no model may stand in for an
+annotator, because a gold set produced by a model would make every accuracy
+number one model agreeing with another. The pipeline ships built and indexed but
+unevaluated. That is a deliberate refusal to publish a figure with nothing behind
+it rather than work left undone.
+
+Two earlier index build runs, `20260907T062752Z` and `20260907T064117Z`, are
+committed beside that record. Their `chunks_created` and `occurrences_created`
+are not quotable in either. Both artifacts were written by pre-fix code in which
+`chunks_created` was structurally unreachable and `occurrences_created` counted
+rows attempted rather than rows inserted. They are committed as evidence of those
+defects, not as a record of work performed.
+
 **Signals page.** A server-rendered view over one committed signal run: the
 2,785,896 pairs at `a >= 3`, paginated, filtered and sorted in DuckDB against the
 run's Parquet rather than in the browser. Each row states whether label evidence
@@ -102,7 +130,7 @@ which is not built.
     scope by signal, fetch, section split
           |
           v
-  Retrieval                                  DESIGNED, NOT BUILT
+  Retrieval                                  BUILT, INDEXED, UNEVALUATED
     MedCPT embeddings -> pgvector HNSW
     bm25s sparse index
     reciprocal rank fusion, k = 60
@@ -114,26 +142,27 @@ which is not built.
       Gemini 2.5 Flash -> Groq -> Cerebras -> Ollama
 ```
 
-The pipeline is a straight line, and the boundary sits between the label ingest
-and retrieval. Everything above that line has run over the real corpus and
-written an artifact. Everything below it is either an empty module or, in the
-router's case, a component built and tested in isolation with nothing calling it
-in anger yet.
+The pipeline is a straight line, and the boundary sits between retrieval and the
+adjudicator. Everything above that line has run over the real corpus and written
+an artifact, with the qualification that retrieval has an artifact describing the
+index it built and none describing how well it retrieves. Everything below it is
+either an empty module or, in the router's case, a component built and tested in
+isolation with nothing calling it in anger yet.
 
 Built: FAERS ingest, deduplication, the DuckDB analytics layer, the four
 estimators, the signal build, the openFDA SPL ingest with its scope selection,
-the signals page over the committed run, and the model provider router. The
-router walks an ordered chain, refuses any model outside each provider's
-published free tier, and guarantees that a judge is never the same model as the
-generator it grades. A collision there is a skip that continues the walk rather
-than an error that kills the call, because with failover in play two providers
-resolving to one model is a normal outcome and not a misconfiguration.
+the signals page over the committed run, the chunking and MedCPT embedding of the
+label corpus with its pgvector HNSW and bm25s indexes, rank fusion and the
+cross-encoder reranker, and the model provider router. The router walks an
+ordered chain, refuses any model outside each provider's published free tier, and
+guarantees that a judge is never the same model as the generator it grades. A
+collision there is a skip that continues the walk rather than an error that kills
+the call, because with failover in play two providers resolving to one model is a
+normal outcome and not a misconfiguration.
 
-Not built: chunking, MedCPT embedding, the pgvector HNSW index, the bm25s sparse
-index, rank fusion, the cross-encoder reranker, the labeledness adjudicator, the
-evidence brief pipeline, and the bounded five-tool agent. `rag/index/`,
-`rag/agent/` and `rag/tasks/` are empty. The design is settled; the code is not
-written.
+Not built: the labeledness adjudicator, the evidence brief pipeline, and the
+bounded five-tool agent. `rag/agent/` and `rag/tasks/` are empty. The design is
+settled; the code is not written.
 
 ## Stack
 
@@ -227,8 +256,11 @@ failure, and the lesson lives in the tests rather than in a document.
 Stated directly, because a reader should not have to infer it from what is
 absent.
 
-- Retrieval evaluation (P10): not started. Nothing measures retrieval quality,
-  because retrieval is not built.
+- Retrieval evaluation (P10): not built. Retrieval itself is built and the label
+  corpus is indexed, but nothing measures how well it retrieves. `evals/golden/`
+  holds no judgements, so no recall, MRR or nDCG figure exists and none should be
+  inferred from a corpus having been indexed. The blocker is the annotation, not
+  the harness: see the labeledness entry below, which is the same blocker.
 - Labeledness annotation (P12): incomplete. The sampling frame, guideline and
   annotation harness exist, and the sample is drawn and committed. No usable
   annotation exists yet, so no labeledness or classification accuracy figure is
