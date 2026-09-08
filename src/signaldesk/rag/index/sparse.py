@@ -48,6 +48,21 @@ def index_root(settings: Settings | None = None) -> Path:
     return settings.data_dir / "index" / "bm25"
 
 
+def indexed_count(path: Path) -> int | None:
+    """How many chunks the index at ``path`` covers, or None if there is none.
+
+    Reads the id file rather than loading bm25s, so a run that did not build the
+    index can still record what the index on disk holds without paying for it.
+    None distinguishes "no index here" from "an index over nothing", which the
+    artifact has to keep apart for the same reason ``load`` does.
+    """
+    ids_path = path / IDS_FILENAME
+    if not ids_path.is_file():
+        return None
+    chunk_ids: list[int] = json.loads(ids_path.read_text(encoding="utf-8"))
+    return len(chunk_ids)
+
+
 def _tokenizer() -> Any:
     """The English stemmer bm25s tokenises through.
 

@@ -882,23 +882,51 @@ def index_embed(
 
     Multi-hour on a machine with no accelerator. Run 'index benchmark' first for
     a measured projection; --limit bounds a first pass.
+
+    Writes an artifact under evals/history when it finishes, the same record
+    'index build' writes. A multi-hour run that printed its throughput and exited
+    left nothing any published number could cite.
     """
     import os
+    import time
+    from datetime import UTC, datetime
 
     _setup_django()
     from signaldesk.core.config import get_settings
     from signaldesk.rag.adapters import MedCptArticleEncoder
+    from signaldesk.rag.index import artifact
     from signaldesk.rag.index.corpus import embed_pending
 
     settings = get_settings()
+    started = time.monotonic()
+    # Taken before the model load, so run_window covers the whole invocation.
+    # On a cold weights cache the load alone is minutes.
+    started_at = datetime.now(UTC)
+    run_id = artifact.new_run_id()
     typer.echo(f"torch threads: {_set_torch_threads(threads or os.cpu_count() or 1)}")
 
     # Loaded before any work starts, so a failed or interrupted download costs
     # seconds rather than failing forty thousand chunks into a run.
     encoder = MedCptArticleEncoder(settings.embedding_model)
-    run = embed_pending(encoder, limit=limit or None, batch_size=batch_size, settings=settings)
+    run = embed_pending(
+        encoder,
+        limit=limit or None,
+        batch_size=batch_size,
+        settings=settings,
+        started_at=started_at,
+    )
     for key, value in run.as_dict().items():
         typer.echo(f"{key}: {value}")
+
+    written = artifact.record(
+        run_id=run_id,
+        chunking={"ran": False},
+        embedding=run.as_dict(),
+        seconds=time.monotonic() - started,
+        settings=settings,
+    )
+    typer.echo("")
+    typer.echo(f"artifact: {written}")
     if run.remaining:
         typer.echo("")
         typer.echo(f"{run.remaining} chunks still have no vector. Re-run to continue.")
@@ -937,7 +965,7 @@ def index_build(
     for key, value in chunk_run.as_dict().items():
         typer.echo(f"{key}: {value}")
 
-    indexed, path = build_sparse_index()
+    indexed, _path = build_sparse_index()
     typer.echo(f"sparse chunks indexed: {indexed}")
 
     embedding: dict[str, object] = {
@@ -946,35 +974,60 @@ def index_build(
         "ran": False,
     }
     if dense:
+        from datetime import UTC, datetime
+
         from signaldesk.rag.adapters import MedCptArticleEncoder
         from signaldesk.rag.index.corpus import embed_pending
 
+        started_at = datetime.now(UTC)
         embed_run = embed_pending(
             MedCptArticleEncoder(settings.embedding_model),
             limit=limit or None,
             settings=settings,
+            started_at=started_at,
         )
-        embedding = {**embed_run.as_dict(), "ran": True}
-        for key, value in embed_run.as_dict().items():
+        embedding = embed_run.as_dict()
+        for key, value in embedding.items():
             typer.echo(f"{key}: {value}")
 
-    written = artifact.write(
-        artifact.collect(
-            run_id=run_id,
-            params={
-                "chunk_target_tokens": settings.chunk_target_tokens,
-                "chunk_overlap_tokens": settings.chunk_overlap_tokens,
-                "embedding_model": settings.embedding_model,
-                "reranker_model": settings.reranker_model,
-            },
-            chunking=chunk_run.as_dict(),
-            embedding=embedding,
-            sparse_chunks=indexed,
-            sparse_path=Path(path),
-            seconds=time.monotonic() - started,
-        )
+    written = artifact.record(
+        run_id=run_id,
+        chunking=chunk_run.as_dict(),
+        embedding=embedding,
+        seconds=time.monotonic() - started,
+        settings=settings,
+        sparse_rebuilt=True,
     )
     typer.echo("")
+    typer.echo(f"artifact: {written}")
+
+
+@index_app.command("artifact")
+def index_artifact(
+    run_id: Annotated[
+        str, typer.Option("--run-id", help="Name the record for a run rather than for now.")
+    ] = "",
+) -> None:
+    """Record what the index is now, without building anything.
+
+    Measures and writes: no model is loaded, no chunk is read, no vector is
+    computed. It exists for a run that did work and recorded none, which under
+    the rule that every published number traces to a committed artifact makes
+    that work unquotable however well it went.
+
+    What comes out always carries a 'reconstructed' block saying it was assembled
+    after the fact, listing what was measured now and what the run never captured.
+    That is a property of this command rather than of an argument to it, so no
+    invocation can produce a record that fails to admit what it is.
+
+    --run-id names the record for the run it describes. Without it the record is
+    named for the moment it was written, which is the honest default when the run
+    it describes cannot be identified.
+    """
+    _setup_django()
+    from signaldesk.rag.index import artifact
+
+    written = artifact.reconstruct(run_id=run_id or artifact.new_run_id())
     typer.echo(f"artifact: {written}")
 
 

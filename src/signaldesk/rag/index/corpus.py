@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from django.db import transaction
@@ -71,6 +72,7 @@ class ChunkRun:
 
     def as_dict(self) -> dict[str, object]:
         return {
+            "ran": True,
             "sections_seen": self.sections_seen,
             "sections_chunked": self.sections_chunked,
             "sections_skipped_already_chunked": self.sections_skipped,
@@ -92,6 +94,16 @@ def chunk_corpus(settings: Settings | None = None, *, force: bool = False) -> Ch
     change to the chunking parameters or the splitter. Without it the skip makes
     such a change invisible, which is the failure mode a resumable step usually
     has.
+
+    ``chunks_created`` and ``occurrences_created`` are differences read either
+    side of each insert rather than totals the loop accumulated, because with
+    ``ignore_conflicts`` the insert cannot report what it accepted. The cost is
+    three extra indexed queries per chunked section. The limit is concurrency: a
+    row inserted by another build between this run's two reads is counted here as
+    this run's, so two overlapping builds each over-report. Nothing in a single
+    build can observe that, and the counted totals in the artifact - which are
+    read from the tables at the end - are the figures to trust when they
+    disagree.
     """
     settings = settings or get_settings()
     started = time.monotonic()
@@ -130,6 +142,7 @@ def chunk_corpus(settings: Settings | None = None, *, force: bool = False) -> Ch
             chunked += 1
             continue
 
+        shas = [sha for sha, _, _, _ in cached]
         with transaction.atomic():
             rows = [
                 LabelChunk(sha256=sha, section_code=section_code, text=body, token_estimate=tokens)
@@ -138,18 +151,26 @@ def chunk_corpus(settings: Settings | None = None, *, force: bool = False) -> Ch
             # ignore_conflicts rather than update: a chunk is identified by a
             # hash of its own content, so a row that already exists is already
             # correct and rewriting it would be work with no possible effect.
-            new_chunks = LabelChunk.objects.bulk_create(rows, ignore_conflicts=True)
-            created_chunks += sum(1 for chunk in new_chunks if chunk.pk is not None)
+            #
+            # What it inserted has to be measured either side of the statement.
+            # ignore_conflicts requests no RETURNING, so bulk_create hands back
+            # the objects it was given, with no primary key on any of them and
+            # no way to tell an accepted row from a rejected one.
+            before = _chunk_ids_for(shas)
+            LabelChunk.objects.bulk_create(rows, ignore_conflicts=True)
+            ids = _chunk_ids_for(shas)
+            created_chunks += len(ids) - len(before)
 
-            ids = _chunk_ids_for([sha for sha, _, _, _ in cached])
             occurrences = [
                 LabelChunkOccurrence(chunk_id=ids[sha], section_id=section_id, ordinal=ordinal)
                 for sha, ordinal, _, _ in cached
             ]
-            new_occurrences = LabelChunkOccurrence.objects.bulk_create(
-                occurrences, ignore_conflicts=True
+            occurrences_before = LabelChunkOccurrence.objects.filter(section_id=section_id).count()
+            LabelChunkOccurrence.objects.bulk_create(occurrences, ignore_conflicts=True)
+            created_occurrences += (
+                LabelChunkOccurrence.objects.filter(section_id=section_id).count()
+                - occurrences_before
             )
-            created_occurrences += len(new_occurrences)
         chunked += 1
 
         if chunked % 500 == 0:
@@ -203,7 +224,16 @@ def build_sparse_index(
 
 @dataclass(frozen=True, slots=True)
 class EmbedRun:
-    """What one embedding pass did."""
+    """What one embedding pass did.
+
+    ``started_at`` is supplied by the caller so it can be taken before the model
+    is loaded, which ``seconds`` - measured inside this function - necessarily
+    excludes. The two answer different questions and the artifact carries both.
+
+    ``rows_first_written_in_run`` is counted from the table rather than from
+    ``embedded_this_run``, so the record says which vectors this process is
+    responsible for rather than how many it believes it wrote.
+    """
 
     model: str
     model_revision: str
@@ -212,9 +242,13 @@ class EmbedRun:
     remaining: int
     batches: int
     seconds: float
+    started_at: datetime
+    finished_at: datetime
+    rows_first_written_in_run: int
 
     def as_dict(self) -> dict[str, object]:
         return {
+            "ran": True,
             "model": self.model,
             "model_revision": self.model_revision,
             "chunks_embedded_this_run": self.embedded_this_run,
@@ -225,6 +259,12 @@ class EmbedRun:
             "chunks_per_second": (
                 round(self.embedded_this_run / self.seconds, 3) if self.seconds > 0 else 0.0
             ),
+            "rows_first_written_in_run": self.rows_first_written_in_run,
+            "run_window": {
+                "started_at": self.started_at.isoformat(),
+                "finished_at": self.finished_at.isoformat(),
+                "seconds": round((self.finished_at - self.started_at).total_seconds(), 2),
+            },
         }
 
 
@@ -256,6 +296,7 @@ def embed_pending(
     limit: int | None = None,
     batch_rows: int = EMBED_BATCH_ROWS,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    started_at: datetime | None = None,
 ) -> EmbedRun:
     """Embed every chunk that has no vector for this encoder's model.
 
@@ -267,9 +308,14 @@ def embed_pending(
     The dimension assertion runs inside ``embed_pairs`` on the first batch, so a
     model whose width disagrees with the column fails within seconds rather than
     after hours of accumulated work.
+
+    ``started_at`` is when the caller began, which for the command line is before
+    the encoder was constructed. Defaulting it to now measures from here instead
+    and so omits the model load, which on a cold cache is minutes.
     """
     settings = settings or get_settings()
     started = time.monotonic()
+    began = started_at or datetime.now(UTC)
     model = encoder.model_id
     revision = encoder.model_revision
 
@@ -308,6 +354,11 @@ def embed_pending(
         remaining=remaining,
         batches=batches,
         seconds=time.monotonic() - started,
+        started_at=began,
+        finished_at=datetime.now(UTC),
+        rows_first_written_in_run=ChunkEmbedding.objects.filter(
+            model=model, created_at__gte=began
+        ).count(),
     )
     log.info("rag.embed.done", **run.as_dict())
     return run
