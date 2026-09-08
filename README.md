@@ -152,8 +152,10 @@ isolation with nothing calling it in anger yet.
 Built: FAERS ingest, deduplication, the DuckDB analytics layer, the four
 estimators, the signal build, the openFDA SPL ingest with its scope selection,
 the signals page over the committed run, the chunking and MedCPT embedding of the
-label corpus with its pgvector HNSW and bm25s indexes, rank fusion and the
-cross-encoder reranker, and the model provider router. The router walks an
+label corpus with its pgvector HNSW and bm25s indexes, and the model provider
+router. Rank fusion and the cross-encoder reranker are implemented and unit
+tested, but neither has been run end to end over the corpus, so no artifact
+describes either and nothing above claims one does. The router walks an
 ordered chain, refuses any model outside each provider's published free tier, and
 guarantees that a judge is never the same model as the generator it grades. A
 collision there is a skip that continues the walk rather than an error that kills
